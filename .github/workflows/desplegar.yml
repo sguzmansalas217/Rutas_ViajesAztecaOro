@@ -1,0 +1,59 @@
+# Despliegue automático al hacer push a main.
+#
+# Secretos que hay que crear en GitHub (Settings → Secrets → Actions):
+#   SSH_LLAVE_PRIVADA   llave privada del usuario 'despliegue'
+#   SSH_HOST            IP o dominio del droplet
+#   SSH_USUARIO         despliegue
+#
+# Es opcional: ./desplegar.sh desde la máquina local hace exactamente lo mismo.
+name: Desplegar a DigitalOcean
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: despliegue
+  cancel-in-progress: false
+
+jobs:
+  desplegar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verificar sintaxis del API
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - run: |
+          cd app
+          npm install --omit=dev --no-audit --no-fund
+          for f in $(find src -name '*.js'); do node --check "$f"; done
+
+      - name: Preparar SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_LLAVE_PRIVADA }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Desplegar
+        run: |
+          ssh ${{ secrets.SSH_USUARIO }}@${{ secrets.SSH_HOST }} bash -euo pipefail <<'FIN'
+            cd /opt/monitoreo-rutas
+            git fetch origin main --quiet
+            git reset --hard origin/main --quiet
+            mkdir -p respaldos
+            docker compose exec -T db pg_dump -U "${POSTGRES_USER:-monitoreo}" "${POSTGRES_DB:-monitoreo}" \
+              | gzip > "respaldos/pre-despliegue-$(date +%Y%m%d-%H%M%S).sql.gz" || true
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml build
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans
+            for i in $(seq 1 30); do
+              docker compose exec -T api curl -fsS http://localhost:3000/salud >/dev/null 2>&1 && exit 0
+              sleep 1
+            done
+            echo "El API no respondió"; docker compose logs --tail 40 api; exit 1
+          FIN

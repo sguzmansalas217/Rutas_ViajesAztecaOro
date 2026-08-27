@@ -1,0 +1,2 @@
+# Raíz del challenge ACME (/.well-known/acme-challenge/).
+# Nginx la sirve por HTTP para que Let's Encrypt pueda validar el dominio.

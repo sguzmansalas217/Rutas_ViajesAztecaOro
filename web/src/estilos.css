@@ -1,0 +1,94 @@
+:root {
+  --azul: #1f3864;
+  --azul-claro: #2e5395;
+  --gris: #f4f6fa;
+  --borde: #dde3ec;
+  --texto: #1a2233;
+  --tenue: #64748b;
+  --verde: #16a34a;
+  --amarillo: #d97706;
+  --rojo: #dc2626;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--gris);
+  color: var(--texto);
+  font-size: 14px;
+}
+
+.app { display: flex; min-height: 100vh; }
+
+.lateral {
+  width: 210px;
+  background: var(--azul);
+  color: #fff;
+  padding: 18px 0;
+  flex-shrink: 0;
+}
+.lateral h1 { font-size: 15px; margin: 0 18px 4px; letter-spacing: .3px; }
+.lateral .marca { font-size: 11px; color: #9db4dd; margin: 0 18px 22px; }
+.lateral a {
+  display: block; padding: 10px 18px; color: #d7e2f5;
+  text-decoration: none; font-size: 13.5px; border-left: 3px solid transparent;
+}
+.lateral a:hover { background: rgba(255,255,255,.07); }
+.lateral a.router-link-exact-active {
+  background: rgba(255,255,255,.12); color: #fff; border-left-color: #ffc857;
+}
+.lateral .pie { margin-top: auto; padding: 14px 18px; font-size: 11px; color: #8ba4d0; }
+
+.principal { flex: 1; padding: 22px 26px; overflow-x: auto; }
+
+h2 { margin: 0 0 4px; font-size: 20px; }
+.sub { color: var(--tenue); margin: 0 0 18px; font-size: 13px; }
+
+.tarjetas { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.tarjeta { background: #fff; border: 1px solid var(--borde); border-radius: 8px; padding: 14px 16px; }
+.tarjeta .n { font-size: 26px; font-weight: 600; line-height: 1.1; }
+.tarjeta .r { font-size: 12px; color: var(--tenue); text-transform: uppercase; letter-spacing: .4px; }
+.tarjeta.verde .n { color: var(--verde); }
+.tarjeta.amarillo .n { color: var(--amarillo); }
+.tarjeta.rojo .n { color: var(--rojo); }
+
+table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--borde); border-radius: 8px; overflow: hidden; }
+th, td { text-align: left; padding: 8px 11px; border-bottom: 1px solid var(--borde); font-size: 13px; }
+th { background: #eef2f8; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .3px; color: #45536b; }
+tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: #fafbfe; }
+
+.chip { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11.5px; font-weight: 600; }
+.chip.verde { background: #dcfce7; color: #166534; }
+.chip.amarillo { background: #fef3c7; color: #92400e; }
+.chip.rojo { background: #fee2e2; color: #991b1b; }
+.chip.gris { background: #e8edf5; color: #475569; }
+
+button, .boton {
+  background: var(--azul); color: #fff; border: none; border-radius: 6px;
+  padding: 8px 14px; font-size: 13px; cursor: pointer; font-family: inherit;
+}
+button:hover { background: var(--azul-claro); }
+button:disabled { background: #9aa6bb; cursor: not-allowed; }
+button.tenue { background: #e8edf5; color: var(--texto); }
+
+input, select {
+  border: 1px solid var(--borde); border-radius: 6px; padding: 7px 10px;
+  font-size: 13px; font-family: inherit; background: #fff;
+}
+input:focus, select:focus { outline: 2px solid #b9cdf2; border-color: var(--azul-claro); }
+
+.barra { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+.aviso { background: #fff8e1; border: 1px solid #f5d98a; border-radius: 8px; padding: 11px 14px; margin-bottom: 16px; font-size: 13px; }
+.error { background: #fee2e2; border: 1px solid #f5b5b5; border-radius: 8px; padding: 11px 14px; margin-bottom: 16px; color: #991b1b; font-size: 13px; }
+.ok { background: #dcfce7; border: 1px solid #a7e5bd; border-radius: 8px; padding: 11px 14px; margin-bottom: 16px; color: #166534; font-size: 13px; }
+.tenue-txt { color: var(--tenue); font-size: 12px; }
+
+.login { display: flex; align-items: center; justify-content: center; height: 100vh; width: 100%; }
+.login form { background: #fff; padding: 30px 32px; border-radius: 10px; border: 1px solid var(--borde); width: 330px; }
+.login h1 { margin: 0 0 2px; font-size: 19px; color: var(--azul); }
+.login p { margin: 0 0 22px; font-size: 12px; color: var(--tenue); }
+.login input { width: 100%; margin-bottom: 12px; }
+.login button { width: 100%; padding: 10px; }

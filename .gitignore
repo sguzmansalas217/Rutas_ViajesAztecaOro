@@ -1,0 +1,29 @@
+node_modules/
+dist/
+
+# Secretos: el .env real nunca se sube. Sólo la plantilla y el de pruebas
+# (que trae valores ficticios y es necesario para que corra `npm run prueba`).
+.env
+.env.*
+!.env.example
+!app/pruebas/.env.prueba
+secrets/
+
+# Certificados TLS del servidor
+infra/certs/*
+!infra/certs/.gitkeep
+
+*.log
+npm-debug.log*
+coverage/
+
+# Datos del cliente: son datos personales (LFPDPPP). Nunca a git.
+subidas/
+respaldos/
+*.xlsx
+!plantillas/*.xlsx
+
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

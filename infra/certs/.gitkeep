@@ -1,0 +1,4 @@
+# Aquí viven fullchain.pem y privkey.pem en el servidor.
+# provisionar.sh genera un par autofirmado para que Nginx pueda arrancar,
+# y luego certbot los reemplaza con los de Let's Encrypt.
+# Los certificados reales NUNCA se suben a git (ver .gitignore).

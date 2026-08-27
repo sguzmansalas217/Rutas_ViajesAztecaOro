@@ -1,0 +1,40 @@
+# Sobrecarga de producción (DigitalOcean).
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+services:
+  api:
+    environment:
+      NODE_ENV: production
+    deploy:
+      resources:
+        limits: { memory: 512M }
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+  trabajador:
+    environment:
+      NODE_ENV: production
+    deploy:
+      resources:
+        limits: { memory: 384M }
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+  db:
+    deploy:
+      resources:
+        limits: { memory: 768M }
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  redis:
+    deploy:
+      resources:
+        limits: { memory: 192M }
+
+  web:
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }

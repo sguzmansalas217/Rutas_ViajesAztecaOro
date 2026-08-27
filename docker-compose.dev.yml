@@ -1,0 +1,24 @@
+# Sobrecarga para desarrollo local.
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db redis api trabajador
+#
+# Publica los puertos de la base y del API para poder depurar desde Windows,
+# y deja el frontend corriendo con Vite (npm run dev en web/).
+# Usa el Postgres 16 del contenedor, NO el que tengas instalado local:
+# así desarrollo y producción son la misma versión.
+services:
+  db:
+    ports: ["5432:5432"]
+
+  redis:
+    ports: ["6379:6379"]
+
+  api:
+    environment:
+      NODE_ENV: development
+      WA_SIMULADO: "1"
+    ports: ["3000:3000"]
+
+  trabajador:
+    environment:
+      NODE_ENV: development
+      WA_SIMULADO: "1"
