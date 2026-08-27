@@ -95,6 +95,7 @@ export async function calcularPeriodo(periodo) {
   return {
     periodo,
     ...calculo,
+    limiteContrato: Number(p['limite.vehiculos'] ?? 30),
     proyeccion: proyeccion.vehiculosActivos > calculo.vehiculosActivos ? proyeccion : null,
     // Prueba visual de la promesa comercial: unidades que cubren más de una ruta.
     unidadesConVariasRutas: detalle.filter((d) => d.rutas_distintas > 1).length,

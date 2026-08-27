@@ -32,18 +32,23 @@ async function tic() {
   const pendientes = await filas(
     `UPDATE marcaje m
         SET estado = 'enviado', enviado_en = now(), intentos = m.intentos + 1
-       FROM asignacion a, ruta r, conductor c
+       FROM asignacion a, ruta r, conductor c, vehiculo v
       WHERE m.asignacion_id = a.id
         AND a.ruta_id = r.id
         AND a.conductor_id = c.id
+        AND a.vehiculo_id = v.id
         AND m.estado = 'pendiente'
         AND a.estado = 'programada'
         AND c.activo AND c.telefono_e164 IS NOT NULL
+        -- El contrato cubre un número fijo de unidades. Aquí es donde de
+        -- verdad importa: cada mensaje cuesta, y el Excel trae muchas más
+        -- unidades de las contratadas. Sin este filtro se pagan mensajes
+        -- de unidades que nadie contrató.
+        AND v.contratado
         AND m.programado_para <= now()
         AND m.programado_para >  now() - interval '15 minutes'
       RETURNING m.id, m.numero, c.id AS conductor_id, c.nombre, c.telefono_e164,
-                r.nombre AS ruta, r.hora_monitoreo,
-                (SELECT v.clave FROM vehiculo v WHERE v.id = a.vehiculo_id) AS unidad`,
+                r.nombre AS ruta, r.hora_monitoreo, v.clave AS unidad`,
   );
 
   for (const p of pendientes) {

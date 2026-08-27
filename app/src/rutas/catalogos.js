@@ -3,6 +3,10 @@
 import { z } from 'zod';
 import { filas, unaFila, consultar, auditar, parametros, fijarParametro } from '../db.js';
 import { aE164, normalizar } from '../dominio/normalizar.js';
+import {
+  estadoContrato, listarVehiculos, fijarContratado,
+  proponerContratados, resincronizarAsignaciones,
+} from '../dominio/contrato.js';
 
 export default async function catalogos(app) {
   app.addHook('preHandler', app.autenticar);
@@ -105,10 +109,61 @@ export default async function catalogos(app) {
   // son ~$1,250 al mes de diferencia. Por eso quedan auditados.
   app.get('/vehiculos', async () =>
     filas(
-      `SELECT v.id, v.clave, v.activo,
+      `SELECT v.id, v.clave, v.activo, v.contratado, v.contratado_en,
               (SELECT string_agg(a.alias, ' | ' ORDER BY a.alias) FROM vehiculo_alias a WHERE a.vehiculo_id = v.id) AS alias
          FROM vehiculo v ORDER BY v.clave`,
     ));
+
+  // ── Alcance del contrato ──────────────────────────────────────────────────
+  // El contrato cubre un número fijo de unidades (hoy 30) y el Excel del
+  // cliente trae muchas más. Aquí se decide cuáles entran.
+
+  app.get('/contrato', async () => ({
+    ...(await estadoContrato()),
+    vehiculos: await listarVehiculos(),
+  }));
+
+  app.post('/contrato/vehiculos/:id', { preHandler: [editar] }, async (req, reply) => {
+    const contratado = z.boolean().parse(req.body?.contratado);
+    let v;
+    try {
+      v = await fijarContratado(Number(req.params.id), contratado);
+    } catch (e) {
+      // El trigger de la base es quien impone el tope; su mensaje ya viene
+      // redactado para el operador ("El contrato cubre 30 unidades y ya…").
+      if (e.code === '23514') return reply.code(409).send({ error: e.message });
+      throw e;
+    }
+    if (!v) return reply.code(404).send({ error: 'No encontrado' });
+
+    // Meter o sacar una unidad cambia qué asignaciones corren.
+    const movidas = await resincronizarAsignaciones();
+    await auditar({
+      usuarioId: req.user.id,
+      accion: contratado ? 'contrato_alta' : 'contrato_baja',
+      entidad: 'vehiculo',
+      entidadId: v.id,
+      detalle: { clave: v.clave, ...movidas },
+      ip: req.ip,
+    });
+    return { ...v, ...movidas, contrato: await estadoContrato() };
+  });
+
+  // Llena los lugares libres con las unidades que más trabajan en el archivo.
+  // Es una propuesta para no arrancar sin monitorear nada: el operador la
+  // revisa y la cambia. Nunca da de baja lo que alguien ya eligió.
+  app.post('/contrato/proponer', { preHandler: [editar] }, async (req) => {
+    const r = await proponerContratados();
+    const movidas = await resincronizarAsignaciones();
+    await auditar({
+      usuarioId: req.user.id,
+      accion: 'contrato_propuesta',
+      entidad: 'vehiculo',
+      detalle: { agregadas: r.agregadas.map((a) => a.clave), ...movidas },
+      ip: req.ip,
+    });
+    return { ...r, ...movidas, contrato: await estadoContrato() };
+  });
 
   app.post('/vehiculos/:id/alias', { preHandler: [editar] }, async (req, reply) => {
     const alias = normalizar(req.body?.alias ?? '');

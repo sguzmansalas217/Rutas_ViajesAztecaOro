@@ -57,15 +57,14 @@ onMounted(cargar);
     <div class="tarjeta"><div class="n" style="font-size:19px">{{ mxn(total) }}</div><div class="r">Total con IVA</div></div>
   </div>
 
-  <!-- Mientras falten teléfonos casi todo cae en "por resolver" y la factura
-       sale en renta base. Este aviso evita la sorpresa de creer que el
-       servicio cuesta $1,900 cuando el padrón todavía no está completo. -->
+  <!-- El contrato cubre un número fijo de unidades y el archivo trae más.
+       Este aviso es el argumento de venta: cuánto costaría cubrirlas todas. -->
   <div v-if="calculo?.proyeccion" class="aviso amarillo">
-    Con el padrón de teléfonos completo serían
-    <strong>{{ calculo.proyeccion.vehiculosActivos }}</strong> unidades:
-    <strong>{{ mxn(calculo.proyeccion.total) }}</strong> al mes.
-    Hoy se factura {{ mxn(total) }} porque sólo {{ calculo.vehiculosActivos }}
-    unidades se están monitoreando de verdad.
+    En el archivo de este periodo hay
+    <strong>{{ calculo.proyeccion.vehiculosActivos }}</strong> unidades, pero el contrato
+    cubre <strong>{{ calculo.limiteContrato }}</strong>. Se factura {{ mxn(total) }}.
+    Cubrirlas todas costaría <strong>{{ mxn(calculo.proyeccion.total) }}</strong> al mes.
+    <router-link to="/unidades">Ver cuáles están dentro</router-link>
   </div>
 
   <div v-if="calculo" class="aviso">

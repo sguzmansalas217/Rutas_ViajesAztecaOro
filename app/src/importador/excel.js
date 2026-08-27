@@ -171,12 +171,15 @@ async function resolverVehiculo(cliente, unidad, fusionarV, memo) {
   if (memo.vehiculos.has(alias)) return memo.vehiculos.get(alias);
 
   const existente = await cliente.query(
-    'SELECT vehiculo_id FROM vehiculo_alias WHERE alias = $1',
+    `SELECT va.vehiculo_id, v.contratado
+       FROM vehiculo_alias va JOIN vehiculo v ON v.id = va.vehiculo_id
+      WHERE va.alias = $1`,
     [alias],
   );
   if (existente.rowCount) {
-    memo.vehiculos.set(alias, existente.rows[0].vehiculo_id);
-    return existente.rows[0].vehiculo_id;
+    const r = { id: existente.rows[0].vehiculo_id, contratado: existente.rows[0].contratado };
+    memo.vehiculos.set(alias, r);
+    return r;
   }
 
   const canonica = claveCanonica(unidad, fusionarV);
@@ -193,8 +196,13 @@ async function resolverVehiculo(cliente, unidad, fusionarV, memo) {
      VALUES ($1, $2, 'importador') ON CONFLICT (alias) DO NOTHING`,
     [alias, id],
   );
-  memo.vehiculos.set(alias, id);
-  return id;
+  // Una unidad nueva NUNCA entra contratada por sí sola: el contrato cubre
+  // un número fijo y quién ocupa esos lugares lo decide el operador desde
+  // la pantalla de Unidades. Si el cliente agrega camiones al Excel, se
+  // registran y se ven, pero no empiezan a gastar mensajes solos.
+  const r = { id, contratado: false, nuevo: true, clave: canonica };
+  memo.vehiculos.set(alias, r);
+  return r;
 }
 
 /**
@@ -280,6 +288,7 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
     leidas: 0,
     resueltas: 0,
     pendientes: 0,
+    fueraContrato: 0,       // unidades del archivo que no cubre el contrato
     conductoresNuevos: [],
     unidadesNuevas: [],
     sinUnidad: [],
@@ -358,24 +367,40 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
             const estatus = detectarEstatus(parte);
             const { nombre, unidad } = partirCelda(parte);
 
-            let vehiculoId = null;
+            let vehiculo = null;
             let conductor = { id: null, completo: false };
 
             if (!estatus) {
-              vehiculoId = await resolverVehiculo(cliente, unidad, fusionarV, memo);
+              vehiculo = await resolverVehiculo(cliente, unidad, fusionarV, memo);
               conductor = await resolverConductor(cliente, parte, nombre, crearConductores, memo);
               // Un conductor sale en varias celdas de la semana: el reporte
               // lista nombres, no apariciones.
               if (conductor.nuevo && !reporte.conductoresNuevos.includes(parte)) {
                 reporte.conductoresNuevos.push(parte);
               }
+              // Unidades que nunca se habían visto: el operador tiene que
+              // decidir si alguna entra al contrato (y cuál sale).
+              if (vehiculo?.nuevo && !reporte.unidadesNuevas.includes(vehiculo.clave)) {
+                reporte.unidadesNuevas.push(vehiculo.clave);
+              }
               if (!unidad) reporte.sinUnidad.push({ hoja: hoja.name, celda: `${colLetra(col)}${nf}`, texto: parte });
             }
 
-            // Sin teléfono no se le puede mandar nada: queda por resolver.
-            const estado = estatus ?? (conductor.completo ? 'programada' : 'por_resolver');
+            // Orden de precedencia, de más fuerte a más débil:
+            //   1. Lo que dice la celda (CANCELADO, VACACIONES): lo puso el
+            //      cliente y manda sobre todo lo demás.
+            //   2. Unidad fuera del contrato: aunque tuviera teléfono, no se
+            //      le manda nada. Es el límite de alcance.
+            //   3. Sin teléfono: no hay a dónde mandar, queda por resolver.
+            let estado;
+            if (estatus) estado = estatus;
+            else if (!vehiculo?.contratado) estado = 'fuera_contrato';
+            else if (conductor.completo) estado = 'programada';
+            else estado = 'por_resolver';
+
             if (estado === 'programada') reporte.resueltas++;
             else if (estado === 'por_resolver') reporte.pendientes++;
+            else if (estado === 'fuera_contrato') reporte.fueraContrato++;
 
             await cliente.query(
               `INSERT INTO asignacion
@@ -386,7 +411,7 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
                      vehiculo_id  = EXCLUDED.vehiculo_id,
                      conductor_id = EXCLUDED.conductor_id,
                      estado       = EXCLUDED.estado`,
-              [cargaId, fecha, rutaId, vehiculoId, conductor.id, parte, hoja.name,
+              [cargaId, fecha, rutaId, vehiculo?.id ?? null, conductor.id, parte, hoja.name,
                `${colLetra(col)}${nf}`, estado],
             );
             enHoja++;

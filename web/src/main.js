@@ -11,6 +11,7 @@ const rutas = [
   { path: '/', component: () => import('./vistas/Tablero.vue') },
   { path: '/por-resolver', component: () => import('./vistas/PorResolver.vue') },
   { path: '/conductores', component: () => import('./vistas/Conductores.vue') },
+  { path: '/unidades', component: () => import('./vistas/Unidades.vue') },
   { path: '/carga', component: () => import('./vistas/Carga.vue') },
   { path: '/cobro', component: () => import('./vistas/Cobro.vue') },
   { path: '/:resto(.*)', redirect: '/' },

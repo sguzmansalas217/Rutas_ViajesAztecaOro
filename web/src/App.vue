@@ -22,6 +22,7 @@ async function salir() {
       <router-link to="/">Tablero</router-link>
       <router-link to="/por-resolver">Por resolver</router-link>
       <router-link to="/conductores">Conductores</router-link>
+      <router-link to="/unidades">Unidades</router-link>
       <router-link to="/carga">Cargar Excel</router-link>
       <router-link to="/cobro">Cobro</router-link>
       <div class="pie">

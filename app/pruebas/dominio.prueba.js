@@ -79,6 +79,22 @@ test('el cobro es por vehículo: las rutas no entran en la fórmula', () => {
   assert.equal(calcularMensualidad({ vehiculosActivos: 134, ...base }).total, 8236);
 });
 
+test('con el contrato en 30 unidades la mensualidad es la renta base', () => {
+  const base = { rentaBase: 1900, incluidas: 30, precioExtra: 50, iva: 0.16 };
+
+  // El contrato arranca con 30 aunque el archivo traiga 113. El tope lo
+  // impone la base (trigger en 005_limite_contrato.sql) y la vista de cobro
+  // sólo cuenta unidades contratadas: nunca pueden llegar más de 30 aquí.
+  const c = calcularMensualidad({ vehiculosActivos: 30, ...base });
+  assert.equal(c.adicionales, 0);
+  assert.equal(c.subtotal, 1900);
+  assert.equal(c.total, 2204);
+
+  // Y si el contrato crece, la fórmula sigue sirviendo sin tocar código:
+  // basta subir el parámetro limite.vehiculos.
+  assert.equal(calcularMensualidad({ vehiculosActivos: 40, ...base }).total, 2784);
+});
+
 test('Haversine da distancias razonables para las geocercas', () => {
   // Fresnillo → Zacatecas, ~54 km en línea recta.
   const d = distanciaMetros(23.1774, -102.8665, 22.7709, -102.5832);
