@@ -1,96 +1,325 @@
+/* ============================================================================
+   Monitoreo de Rutas · Nexori System
+   Hoja única: ninguna vista trae <style> propio, todo el aspecto se controla
+   desde aquí. Sin fuentes ni iconos externos —el servidor va detrás de Nginx
+   y no depende de ningún CDN.
+   ========================================================================== */
 :root {
-  --azul: #1f3864;
-  --azul-claro: #2e5395;
-  --gris: #f4f6fa;
-  --borde: #dde3ec;
-  --texto: #1a2233;
-  --tenue: #64748b;
-  --verde: #16a34a;
-  --amarillo: #d97706;
-  --rojo: #dc2626;
+  --marca:        #1b3159;
+  --marca-clara:  #2e5395;
+  --marca-honda:  #142442;
+  --marca-tenue:  #eef2fa;
+  --acento:       #f0b429;
+
+  --fondo:  #eef1f7;
+  --panel:  #ffffff;
+  --borde:  #e1e7f0;
+  --linea:  #eef1f7;
+
+  --texto:  #101728;
+  --texto2: #45536b;
+  --tenue:  #78879f;
+
+  --verde:    #15803d;
+  --amarillo: #b45309;
+  --rojo:     #be123c;
+
+  --sombra1: 0 1px 2px rgba(16, 23, 40, .05);
+  --sombra2: 0 6px 16px -4px rgba(16, 23, 40, .10), 0 2px 5px -2px rgba(16, 23, 40, .05);
+  --radio: 10px;
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  background: var(--gris);
+  font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  background: var(--fondo);
   color: var(--texto);
   font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
+/* ── Armazón ──────────────────────────────────────────────────────────────
+   El lienzo es flex:1 SIEMPRE. Antes dependía de una clase condicional y si
+   la sesión no se detectaba a tiempo el contenido se encogía contra un lado
+   de la pantalla dejando media ventana vacía.                              */
 .app { display: flex; min-height: 100vh; }
 
+.lienzo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.contenido { flex: 1; padding: 26px 30px 40px; }
+.ancho { max-width: 1560px; margin: 0 auto; }
+
+/* ── Barra lateral ────────────────────────────────────────────────────── */
 .lateral {
-  width: 210px;
-  background: var(--azul);
-  color: #fff;
-  padding: 18px 0;
+  width: 236px;
   flex-shrink: 0;
+  background: linear-gradient(180deg, #1e355f 0%, var(--marca-honda) 100%);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
 }
-.lateral h1 { font-size: 15px; margin: 0 18px 4px; letter-spacing: .3px; }
-.lateral .marca { font-size: 11px; color: #9db4dd; margin: 0 18px 22px; }
+
+.lateral .marca {
+  display: flex; align-items: center; gap: 11px;
+  padding: 18px 18px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, .09);
+}
+.logotipo {
+  width: 36px; height: 36px; flex-shrink: 0;
+  display: grid; place-items: center;
+  border-radius: 9px;
+  background: linear-gradient(145deg, var(--acento), #d99311);
+  color: #3b2600; font-weight: 800; font-size: 17px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .25);
+}
+.marca-txt { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.marca-txt strong { font-size: 13.5px; font-weight: 600; letter-spacing: .2px; }
+.marca-txt span { font-size: 11px; color: #96afd8; letter-spacing: .3px; }
+
+.menu { padding: 14px 0 10px; flex: 1; }
+.grupo {
+  margin: 12px 20px 6px;
+  font-size: 10px; font-weight: 700; letter-spacing: 1px;
+  text-transform: uppercase; color: #7d95c2;
+}
+.grupo:first-child { margin-top: 0; }
+
 .lateral a {
-  display: block; padding: 10px 18px; color: #d7e2f5;
-  text-decoration: none; font-size: 13.5px; border-left: 3px solid transparent;
+  position: relative;
+  display: flex; align-items: center; gap: 11px;
+  margin: 1px 10px; padding: 9px 12px;
+  border-radius: 8px;
+  color: #cddaf0; text-decoration: none;
+  font-size: 13.5px;
+  transition: background .12s, color .12s;
 }
-.lateral a:hover { background: rgba(255,255,255,.07); }
+.lateral a svg { width: 17px; height: 17px; flex-shrink: 0; opacity: .82; }
+.lateral a:hover { background: rgba(255, 255, 255, .08); color: #fff; }
 .lateral a.router-link-exact-active {
-  background: rgba(255,255,255,.12); color: #fff; border-left-color: #ffc857;
+  background: rgba(255, 255, 255, .13);
+  color: #fff; font-weight: 600;
 }
-.lateral .pie { margin-top: auto; padding: 14px 18px; font-size: 11px; color: #8ba4d0; }
+.lateral a.router-link-exact-active svg { opacity: 1; color: var(--acento); }
+.lateral a.router-link-exact-active::before {
+  content: ''; position: absolute; left: -10px; top: 7px; bottom: 7px;
+  width: 3px; border-radius: 0 3px 3px 0; background: var(--acento);
+}
 
-.principal { flex: 1; padding: 22px 26px; overflow-x: auto; }
+.lateral .pie {
+  padding: 12px 14px 14px;
+  border-top: 1px solid rgba(255, 255, 255, .09);
+}
+.usuario { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.avatar {
+  width: 32px; height: 32px; flex-shrink: 0;
+  display: grid; place-items: center; border-radius: 50%;
+  background: rgba(255, 255, 255, .14);
+  font-size: 12px; font-weight: 700; letter-spacing: .3px;
+}
+.usuario-txt { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
+.usuario-txt strong {
+  font-size: 12.5px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.usuario-txt span { font-size: 10.5px; color: #93abd6; text-transform: capitalize; }
 
-h2 { margin: 0 0 4px; font-size: 20px; }
-.sub { color: var(--tenue); margin: 0 0 18px; font-size: 13px; }
+button.salir {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; padding: 8px;
+  background: rgba(255, 255, 255, .08); color: #cddaf0;
+  border: 1px solid rgba(255, 255, 255, .12); border-radius: 8px;
+  font-size: 12.5px;
+}
+button.salir:hover { background: rgba(255, 255, 255, .16); color: #fff; }
+button.salir svg { width: 15px; height: 15px; }
 
-.tarjetas { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
-.tarjeta { background: #fff; border: 1px solid var(--borde); border-radius: 8px; padding: 14px 16px; }
-.tarjeta .n { font-size: 26px; font-weight: 600; line-height: 1.1; }
-.tarjeta .r { font-size: 12px; color: var(--tenue); text-transform: uppercase; letter-spacing: .4px; }
-.tarjeta.verde .n { color: var(--verde); }
+/* ── Barra superior ───────────────────────────────────────────────────── */
+.superior {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 0 30px; height: 60px;
+  background: rgba(255, 255, 255, .92);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--borde);
+}
+.cliente { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
+.cliente strong { font-size: 13.5px; font-weight: 600; }
+.cliente span { font-size: 11.5px; color: var(--tenue); }
+
+.contexto { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+.reloj {
+  font-size: 12px; color: var(--tenue);
+  font-variant-numeric: tabular-nums; text-transform: capitalize;
+  white-space: nowrap;
+}
+.indicador {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 11px; border-radius: 20px;
+  font-size: 12px; font-weight: 600; text-decoration: none;
+  border: 1px solid var(--borde); background: #f7f9fc; color: var(--texto2);
+  white-space: nowrap;
+}
+.indicador:hover { border-color: #c6d4ea; background: #fff; }
+.indicador .punto { width: 7px; height: 7px; border-radius: 50%; }
+.indicador.lleno .punto { background: var(--verde); }
+.indicador.hueco .punto { background: var(--amarillo); }
+
+/* ── Encabezado de cada pantalla ──────────────────────────────────────── */
+h2 { margin: 0 0 3px; font-size: 21px; font-weight: 650; letter-spacing: -.2px; }
+h3 { font-weight: 650; color: var(--texto2); }
+.sub { color: var(--tenue); margin: 0 0 20px; font-size: 13px; max-width: 90ch; }
+
+/* ── Barra de filtros ─────────────────────────────────────────────────── */
+.barra {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  background: var(--panel); border: 1px solid var(--borde);
+  border-radius: var(--radio); box-shadow: var(--sombra1);
+  padding: 12px 14px; margin-bottom: 18px;
+}
+
+/* ── Tarjetas de indicadores ──────────────────────────────────────────────
+   El HTML trae el número antes que la etiqueta; column-reverse las voltea
+   para que se lea la etiqueta arriba, como en cualquier tablero serio.    */
+.tarjetas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  gap: 14px; margin-bottom: 22px;
+}
+.tarjeta {
+  display: flex; flex-direction: column-reverse; gap: 5px;
+  background: var(--panel); border: 1px solid var(--borde);
+  border-radius: 12px; padding: 15px 17px;
+  box-shadow: var(--sombra1);
+  transition: box-shadow .15s, transform .15s;
+}
+.tarjeta:hover { box-shadow: var(--sombra2); transform: translateY(-1px); }
+.tarjeta .n {
+  font-size: 29px; font-weight: 650; line-height: 1.05;
+  letter-spacing: -.5px; font-variant-numeric: tabular-nums;
+}
+.tarjeta .r {
+  font-size: 11px; color: var(--tenue); font-weight: 600;
+  text-transform: uppercase; letter-spacing: .6px;
+}
+.tarjeta.verde    { border-left: 3px solid var(--verde); }
+.tarjeta.amarillo { border-left: 3px solid var(--amarillo); }
+.tarjeta.rojo     { border-left: 3px solid var(--rojo); }
+.tarjeta.verde .n    { color: var(--verde); }
 .tarjeta.amarillo .n { color: var(--amarillo); }
-.tarjeta.rojo .n { color: var(--rojo); }
+.tarjeta.rojo .n     { color: var(--rojo); }
 
-table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--borde); border-radius: 8px; overflow: hidden; }
-th, td { text-align: left; padding: 8px 11px; border-bottom: 1px solid var(--borde); font-size: 13px; }
-th { background: #eef2f8; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .3px; color: #45536b; }
-tr:last-child td { border-bottom: none; }
-tbody tr:hover { background: #fafbfe; }
-
-.chip { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11.5px; font-weight: 600; }
-.chip.verde { background: #dcfce7; color: #166534; }
-.chip.amarillo { background: #fef3c7; color: #92400e; }
-.chip.rojo { background: #fee2e2; color: #991b1b; }
-.chip.gris { background: #e8edf5; color: #475569; }
-
-button, .boton {
-  background: var(--azul); color: #fff; border: none; border-radius: 6px;
-  padding: 8px 14px; font-size: 13px; cursor: pointer; font-family: inherit;
+/* ── Tablas ───────────────────────────────────────────────────────────── */
+table {
+  width: 100%;
+  border-collapse: separate; border-spacing: 0;
+  background: var(--panel);
+  border: 1px solid var(--borde); border-radius: 12px;
+  box-shadow: var(--sombra1);
+  overflow: hidden;
 }
-button:hover { background: var(--azul-claro); }
-button:disabled { background: #9aa6bb; cursor: not-allowed; }
-button.tenue { background: #e8edf5; color: var(--texto); }
+th, td { text-align: left; padding: 11px 14px; font-size: 13px; }
+th {
+  position: sticky; top: 60px; z-index: 10;
+  background: #f6f8fc; color: var(--texto2);
+  font-weight: 600; font-size: 11px;
+  text-transform: uppercase; letter-spacing: .5px;
+  border-bottom: 1px solid var(--borde);
+  white-space: nowrap;
+}
+td { border-bottom: 1px solid var(--linea); }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:nth-child(even) { background: #fbfcfe; }
+tbody tr:hover { background: #f2f7ff; }
+
+/* ── Distintivos ──────────────────────────────────────────────────────── */
+.chip {
+  display: inline-block; padding: 2px 9px; border-radius: 20px;
+  font-size: 11.5px; font-weight: 600; line-height: 1.5;
+  border: 1px solid transparent;
+}
+.chip.verde    { background: #dcfce7; color: #14532d; border-color: #b7e9c9; }
+.chip.amarillo { background: #fef3c7; color: #7c3a06; border-color: #f3d68d; }
+.chip.rojo     { background: #ffe4e6; color: #9f1239; border-color: #f7c0c8; }
+.chip.gris     { background: #eef1f7; color: #64748b; border-color: #e0e6f0; }
+
+/* ── Controles ────────────────────────────────────────────────────────── */
+button, .boton {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--marca); color: #fff;
+  border: 1px solid transparent; border-radius: 8px;
+  padding: 8px 15px; font-size: 13px; font-weight: 500;
+  font-family: inherit; cursor: pointer;
+  box-shadow: var(--sombra1);
+  transition: background .12s, box-shadow .12s;
+}
+button:hover, .boton:hover { background: var(--marca-clara); }
+button:disabled { background: #a3aec1; cursor: not-allowed; box-shadow: none; }
+button.tenue {
+  background: var(--panel); color: var(--texto2); border-color: var(--borde);
+}
+button.tenue:hover { background: #f6f8fc; border-color: #c6d4ea; color: var(--texto); }
 
 input, select {
-  border: 1px solid var(--borde); border-radius: 6px; padding: 7px 10px;
-  font-size: 13px; font-family: inherit; background: #fff;
+  border: 1px solid var(--borde); border-radius: 8px;
+  padding: 8px 11px; font-size: 13px; font-family: inherit;
+  background: #fff; color: var(--texto);
 }
-input:focus, select:focus { outline: 2px solid #b9cdf2; border-color: var(--azul-claro); }
+input:focus, select:focus {
+  outline: none; border-color: var(--marca-clara);
+  box-shadow: 0 0 0 3px rgba(46, 83, 149, .14);
+}
+input::placeholder { color: #9aa8bd; }
 
-.barra { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
-.aviso { background: #fff8e1; border: 1px solid #f5d98a; border-radius: 8px; padding: 11px 14px; margin-bottom: 16px; font-size: 13px; }
-/* Aviso que no debe pasar desapercibido (p. ej. la proyección de la mensualidad). */
+/* ── Mensajes ─────────────────────────────────────────────────────────── */
+.aviso, .error, .ok {
+  border-radius: var(--radio); padding: 12px 15px;
+  margin-bottom: 18px; font-size: 13px;
+  box-shadow: var(--sombra1);
+}
+.aviso { background: #fffbeb; border: 1px solid #f6e3ac; color: #713f12; }
 .aviso.amarillo { border-left: 4px solid var(--amarillo); }
-.error { background: #fee2e2; border: 1px solid #f5b5b5; border-radius: 8px; padding: 11px 14px; margin-bottom: 16px; color: #991b1b; font-size: 13px; }
-.ok { background: #dcfce7; border: 1px solid #a7e5bd; border-radius: 8px; padding: 11px 14px; margin-bottom: 16px; color: #166534; font-size: 13px; }
+.error { background: #fff1f2; border: 1px solid #f7c0c8; color: #9f1239; }
+.ok    { background: #f0fdf4; border: 1px solid #b7e9c9; color: #14532d; }
+.aviso a, .ok a, .error a { color: inherit; font-weight: 600; }
+
 .tenue-txt { color: var(--tenue); font-size: 12px; }
 
-.login { display: flex; align-items: center; justify-content: center; height: 100vh; width: 100%; }
-.login form { background: #fff; padding: 30px 32px; border-radius: 10px; border: 1px solid var(--borde); width: 330px; }
-.login h1 { margin: 0 0 2px; font-size: 19px; color: var(--azul); }
-.login p { margin: 0 0 22px; font-size: 12px; color: var(--tenue); }
-.login input { width: 100%; margin-bottom: 12px; }
-.login button { width: 100%; padding: 10px; }
+/* ── Acceso ───────────────────────────────────────────────────────────── */
+.login {
+  display: flex; align-items: center; justify-content: center;
+  min-height: calc(100vh - 66px); width: 100%;
+}
+.login form {
+  background: var(--panel); padding: 32px 34px;
+  border-radius: 14px; border: 1px solid var(--borde);
+  box-shadow: var(--sombra2); width: 350px;
+}
+.login h1 { margin: 0 0 3px; font-size: 20px; font-weight: 650; color: var(--marca); }
+.login p { margin: 0 0 24px; font-size: 12px; color: var(--tenue); }
+.login input { width: 100%; margin-bottom: 12px; padding: 10px 12px; }
+.login button { width: 100%; padding: 11px; justify-content: center; font-size: 14px; }
+
+/* ── Pantallas angostas: el menú se queda sólo con los iconos ─────────── */
+@media (max-width: 1000px) {
+  .lateral { width: 62px; }
+  .lateral .marca { justify-content: center; padding: 18px 0 16px; }
+  .marca-txt, .grupo, .lateral a span, .usuario-txt, button.salir span { display: none; }
+  .lateral a { justify-content: center; padding: 10px 0; }
+  .lateral a.router-link-exact-active::before { left: -10px; }
+  .usuario { justify-content: center; }
+  .contenido { padding: 20px 16px 32px; }
+  .superior { padding: 0 16px; }
+  .cliente span { display: none; }
+}
