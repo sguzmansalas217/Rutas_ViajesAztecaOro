@@ -57,6 +57,17 @@ onMounted(cargar);
     <div class="tarjeta"><div class="n" style="font-size:19px">{{ mxn(total) }}</div><div class="r">Total con IVA</div></div>
   </div>
 
+  <!-- Mientras falten teléfonos casi todo cae en "por resolver" y la factura
+       sale en renta base. Este aviso evita la sorpresa de creer que el
+       servicio cuesta $1,900 cuando el padrón todavía no está completo. -->
+  <div v-if="calculo?.proyeccion" class="aviso amarillo">
+    Con el padrón de teléfonos completo serían
+    <strong>{{ calculo.proyeccion.vehiculosActivos }}</strong> unidades:
+    <strong>{{ mxn(calculo.proyeccion.total) }}</strong> al mes.
+    Hoy se factura {{ mxn(total) }} porque sólo {{ calculo.vehiculosActivos }}
+    unidades se están monitoreando de verdad.
+  </div>
+
   <div v-if="calculo" class="aviso">
     <strong>{{ calculo.unidadesConVariasRutas }}</strong> unidades cubren más de una ruta
     ({{ calculo.rutasTotales }} rutas en total) y no generan ningún cargo adicional.

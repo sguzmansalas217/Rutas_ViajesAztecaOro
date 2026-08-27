@@ -55,6 +55,26 @@ export async function detallePeriodo(periodo) {
   );
 }
 
+/**
+ * Unidades que aparecen en el archivo del periodo, se hayan monitoreado o no.
+ * No factura: es para saber a cuánto va a llegar la mensualidad cuando el
+ * padrón de teléfonos esté completo. Ver 004_proyeccion.sql.
+ */
+export async function proyeccionPeriodo(periodo) {
+  const p = await parametros();
+  const r = await unaFila(
+    `SELECT count(*)::int AS unidades FROM vehiculo_en_archivo_mes WHERE periodo = $1`,
+    [periodo],
+  );
+  return calcularMensualidad({
+    vehiculosActivos: r?.unidades ?? 0,
+    rentaBase: p['precio.renta_base'] ?? 1900,
+    incluidas: p['precio.incluidas'] ?? 30,
+    precioExtra: p['precio.extra'] ?? 50,
+    iva: p['precio.iva'] ?? 0.16,
+  });
+}
+
 /** Cálculo en vivo del periodo (todavía no cerrado). */
 export async function calcularPeriodo(periodo) {
   const p = await parametros();
@@ -68,9 +88,14 @@ export async function calcularPeriodo(periodo) {
     iva: p['precio.iva'] ?? 0.16,
   });
 
+  // Si hay unidades en el archivo que todavía no facturan (falta el teléfono),
+  // se muestra a cuánto llegaría la mensualidad con el padrón completo.
+  const proyeccion = await proyeccionPeriodo(periodo);
+
   return {
     periodo,
     ...calculo,
+    proyeccion: proyeccion.vehiculosActivos > calculo.vehiculosActivos ? proyeccion : null,
     // Prueba visual de la promesa comercial: unidades que cubren más de una ruta.
     unidadesConVariasRutas: detalle.filter((d) => d.rutas_distintas > 1).length,
     rutasTotales: detalle.reduce((s, d) => s + Number(d.rutas_distintas), 0),

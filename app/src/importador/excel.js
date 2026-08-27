@@ -36,14 +36,17 @@ const COLUMNAS_DIA = [6, 7, 8, 9, 10, 11, 12];
  *   TARDE:      1:20 → 13:20   ·  12:45 se queda en 12:45
  *   NOCHE:      9:00 → 21:00
  *   ENTRADA TB: 1:50 → 13:50   (turno B entra por la tarde)
+ *
+ * La fila del encabezado NO se declara aquí: la busca localizarEncabezado()
+ * leyendo el contenido, porque no es la misma en las cinco hojas.
  */
 const HOJAS = {
-  'MAÑANA':     { turno: 'MANANA',     encabezado: 5, pm: false, cols: { hora: 2, ruta: 3, nota: 4, parada: 5, encargado: 13 } },
-  'MANANA':     { turno: 'MANANA',     encabezado: 5, pm: false, cols: { hora: 2, ruta: 3, nota: 4, parada: 5, encargado: 13 } },
-  'TARDE':      { turno: 'TARDE',      encabezado: 7, pm: true,  cols: { hora: 2, ruta: 3, nota: 4, parada: 5, encargado: 13 } },
-  'NOCHE':      { turno: 'NOCHE',      encabezado: 5, pm: true,  cols: { hora: 2, ruta: 3, nota: 4, parada: 5, encargado: 13 } },
-  'ENTRADA TA': { turno: 'ENTRADA_TA', encabezado: 5, pm: false, cols: { ruta: 2, nota: 3, hora: 4, salida: 5, encargado: 13 } },
-  'ENTRADA TB': { turno: 'ENTRADA_TB', encabezado: 5, pm: true,  cols: { ruta: 2, nota: 3, hora: 4, salida: 5, encargado: 13 } },
+  'MAÑANA':     { turno: 'MANANA',     pm: false, cols: { hora: 2, ruta: 3, nota: 4, parada: 5, encargado: 13 } },
+  'MANANA':     { turno: 'MANANA',     pm: false, cols: { hora: 2, ruta: 3, nota: 4, parada: 5, encargado: 13 } },
+  'TARDE':      { turno: 'TARDE',      pm: true,  cols: { hora: 2, ruta: 3, nota: 4, parada: 5, encargado: 13 } },
+  'NOCHE':      { turno: 'NOCHE',      pm: true,  cols: { hora: 2, ruta: 3, nota: 4, parada: 5, encargado: 13 } },
+  'ENTRADA TA': { turno: 'ENTRADA_TA', pm: false, cols: { ruta: 2, nota: 3, hora: 4, salida: 5, encargado: 13 } },
+  'ENTRADA TB': { turno: 'ENTRADA_TB', pm: true,  cols: { ruta: 2, nota: 3, hora: 4, salida: 5, encargado: 13 } },
 };
 
 // ── Lectura de celdas ───────────────────────────────────────────────────────
@@ -93,17 +96,53 @@ function horaDe(celda, esPm) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
 }
 
-/** Las fechas de la semana viven en la fila de encabezado, columnas F..L. */
-function fechasDeLaSemana(hoja, filaEncabezado) {
-  const fila = hoja.getRow(filaEncabezado);
+/**
+ * Las fechas de la semana NO están en la misma fila en las cinco hojas:
+ *
+ *   ENTRADA TA/TB → fila 5: 'RUTA | NOTA | HORA | SALIDA | 03-ago | 04-ago | …'
+ *                            (etiquetas y fechas comparten fila)
+ *   MAÑANA/NOCHE  → fila 4: las fechas
+ *                   fila 5: 'HORA MONITOREO | RUTA | … | LUNES | MARTES | …'
+ *   TARDE         → lo mismo, pero corrido dos filas (6 y 7)
+ *
+ * Fijar el número de fila fue un error: tres hojas quedaban fuera y el
+ * archivo se importaba a medias sin avisar. Se buscan por contenido, que
+ * además aguanta que el cliente inserte una fila de logo o de firma.
+ */
+function localizarEncabezado(hoja) {
+  const limite = Math.min(hoja.rowCount, 20);
+  let filaFechas = 0;
+  let filaEtiquetas = 0;
   const fechas = {};
-  for (const col of COLUMNAS_DIA) {
-    const v = fila.getCell(col).value;
-    if (v instanceof Date) {
-      fechas[col] = `${v.getUTCFullYear()}-${String(v.getUTCMonth() + 1).padStart(2, '0')}-${String(v.getUTCDate()).padStart(2, '0')}`;
+
+  for (let nf = 1; nf <= limite; nf++) {
+    const fila = hoja.getRow(nf);
+
+    // ¿Es la fila de fechas? Se exigen al menos 4 días para no confundirla
+    // con una celda suelta con fecha.
+    const enEstaFila = {};
+    for (const col of COLUMNAS_DIA) {
+      const v = fila.getCell(col).value;
+      if (v instanceof Date) {
+        enEstaFila[col] = `${v.getUTCFullYear()}-${String(v.getUTCMonth() + 1).padStart(2, '0')}-${String(v.getUTCDate()).padStart(2, '0')}`;
+      }
+    }
+    if (!filaFechas && Object.keys(enEstaFila).length >= 4) {
+      filaFechas = nf;
+      Object.assign(fechas, enEstaFila);
+    }
+
+    // ¿Es la fila de etiquetas? Lleva 'RUTA' en las primeras columnas.
+    if (!filaEtiquetas) {
+      for (let c = 2; c <= 4; c++) {
+        if (normalizar(textoDe(fila.getCell(c))) === 'RUTA') { filaEtiquetas = nf; break; }
+      }
     }
   }
-  return fechas;
+
+  // Los datos empiezan después de la última de las dos, sean cuales sean.
+  const ultima = Math.max(filaFechas, filaEtiquetas);
+  return { fechas, filaFechas, filaEtiquetas, primeraFilaDatos: ultima + 1 };
 }
 
 /**
@@ -266,9 +305,9 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
         continue;
       }
 
-      const fechas = fechasDeLaSemana(hoja, cfg.encabezado);
+      const { fechas, primeraFilaDatos } = localizarEncabezado(hoja);
       if (Object.keys(fechas).length === 0) {
-        reporte.ignoradas.push(`${hoja.name} (sin fechas en la fila ${cfg.encabezado})`);
+        reporte.ignoradas.push(`${hoja.name} (no se encontró la fila de fechas)`);
         continue;
       }
       for (const f of Object.values(fechas)) {
@@ -279,7 +318,7 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
       let seccion = null;
       let enHoja = 0;
 
-      for (let nf = cfg.encabezado + 1; nf <= hoja.rowCount; nf++) {
+      for (let nf = primeraFilaDatos; nf <= hoja.rowCount; nf++) {
         const fila = hoja.getRow(nf);
 
         if (esFilaSeccion(fila, cfg)) {
@@ -325,7 +364,11 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
             if (!estatus) {
               vehiculoId = await resolverVehiculo(cliente, unidad, fusionarV, memo);
               conductor = await resolverConductor(cliente, parte, nombre, crearConductores, memo);
-              if (conductor.nuevo) reporte.conductoresNuevos.push(parte);
+              // Un conductor sale en varias celdas de la semana: el reporte
+              // lista nombres, no apariciones.
+              if (conductor.nuevo && !reporte.conductoresNuevos.includes(parte)) {
+                reporte.conductoresNuevos.push(parte);
+              }
               if (!unidad) reporte.sinUnidad.push({ hoja: hoja.name, celda: `${colLetra(col)}${nf}`, texto: parte });
             }
 

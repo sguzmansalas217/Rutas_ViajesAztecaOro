@@ -1,0 +1,21 @@
+# Se desarrolla en Windows y se ejecuta en Linux (Docker / Ubuntu).
+# Sin esto, un .sh con finales CRLF falla en el servidor con
+#   /bin/bash^M: bad interpreter: No such file or directory
+# y es de los errores que más tiempo cuesta encontrar.
+
+* text=auto eol=lf
+
+*.sh          text eol=lf
+Dockerfile    text eol=lf
+*.conf        text eol=lf
+*.inc         text eol=lf
+Makefile      text eol=lf
+*.yml         text eol=lf
+*.sql         text eol=lf
+
+*.png  binary
+*.jpg  binary
+*.pdf  binary
+*.xlsx binary
+*.pptx binary
+*.docx binary

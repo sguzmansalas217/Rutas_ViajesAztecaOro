@@ -82,6 +82,8 @@ input:focus, select:focus { outline: 2px solid #b9cdf2; border-color: var(--azul
 
 .barra { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
 .aviso { background: #fff8e1; border: 1px solid #f5d98a; border-radius: 8px; padding: 11px 14px; margin-bottom: 16px; font-size: 13px; }
+/* Aviso que no debe pasar desapercibido (p. ej. la proyección de la mensualidad). */
+.aviso.amarillo { border-left: 4px solid var(--amarillo); }
 .error { background: #fee2e2; border: 1px solid #f5b5b5; border-radius: 8px; padding: 11px 14px; margin-bottom: 16px; color: #991b1b; font-size: 13px; }
 .ok { background: #dcfce7; border: 1px solid #a7e5bd; border-radius: 8px; padding: 11px 14px; margin-bottom: 16px; color: #166534; font-size: 13px; }
 .tenue-txt { color: var(--tenue); font-size: 12px; }
