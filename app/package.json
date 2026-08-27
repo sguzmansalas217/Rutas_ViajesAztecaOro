@@ -12,6 +12,7 @@
     "servidor": "node src/servidor.js",
     "trabajador": "node src/trabajador.js",
     "dev": "node --watch src/servidor.js",
+    "wa": "node --env-file=../.env herramientas/probar-whatsapp.js",
     "prueba": "node --env-file=pruebas/.env.prueba --test \"pruebas/*.prueba.js\""
   },
   "dependencies": {

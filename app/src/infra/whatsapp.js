@@ -13,7 +13,9 @@ import { consultar, parametro } from '../db.js';
 import { log } from '../log.js';
 import { decidirCanal } from '../dominio/ventana.js';
 
-const BASE = 'https://graph.facebook.com/v21.0';
+// La versión sale de WA_VERSION. Estaba clavada en v21.0 y la variable no
+// servía de nada: cuando Meta deprecara esa versión habría que tocar código.
+const BASE = `https://graph.facebook.com/${config.whatsapp.version}`;
 
 async function llamarMeta(cuerpo) {
   if (config.whatsapp.simulado) {
