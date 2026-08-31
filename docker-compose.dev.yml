@@ -7,10 +7,20 @@
 # así desarrollo y producción son la misma versión.
 services:
   db:
-    ports: ["5432:5432"]
+    # 5434 y no 5432: esta máquina ya tiene un PostgreSQL 15 de Windows en el
+    # 5432 y el contenedor de otro proyecto (rh-db) en el 5433. Con el puerto
+    # repetido, o no arranca, o —peor— te conectas al servidor equivocado y las
+    # consultas salen vacías sin decir por qué.
+    ports: ["5434:5432"]
+    # Hay que repetir las redes. En el compose base la base vive sólo en
+    # 'interna', que es `internal: true`, y una red interna NO publica puertos:
+    # el `ports` de arriba se ignoraba en silencio. Esto es SÓLO para
+    # desarrollo — en el servidor la base nunca se asoma.
+    networks: [interna, publica]
 
   redis:
     ports: ["6379:6379"]
+    networks: [interna, publica]
 
   api:
     environment:

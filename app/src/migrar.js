@@ -12,6 +12,20 @@ import { hashClave } from './dominio/claves.js';
 
 const DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'migraciones');
 
+/**
+ * Huella del contenido de una migración, insensible al fin de línea.
+ *
+ * El guardián de abajo existe para detectar que alguien EDITÓ una migración ya
+ * aplicada. Hasheando los bytes tal cual, un archivo que sólo cambió de LF a
+ * CRLF —cosa que en Windows pasa sola— disparaba la alarma y dejaba la API en
+ * ciclo de reinicio con un mensaje que apuntaba al lugar equivocado. El SQL era
+ * idéntico. Se normaliza antes de hashear para que la comprobación hable de
+ * contenido y no de codificación.
+ */
+function huella(sql) {
+  return createHash('sha256').update(sql.replace(/\r\n/g, '\n')).digest('hex');
+}
+
 async function asegurarTablaControl(cliente) {
   await cliente.query(`
     CREATE TABLE IF NOT EXISTS migracion (
@@ -49,7 +63,7 @@ export async function migrar() {
 
     for (const archivo of archivos) {
       const sql = await readFile(join(DIR, archivo), 'utf8');
-      const hash = createHash('sha256').update(sql).digest('hex');
+      const hash = huella(sql);
 
       if (aplicadas.has(archivo)) {
         if (aplicadas.get(archivo) !== hash) {
