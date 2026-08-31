@@ -26,6 +26,7 @@ import {
   normalizar, esRuido, detectarEstatus, partirCelda,
   partirMultiples, claveCanonica,
 } from '../dominio/normalizar.js';
+import { leerDirectorio, esHojaTelefonos, llave } from './telefonos.js';
 
 // Columnas F..L son los siete días de la semana en todas las hojas.
 const COLUMNAS_DIA = [6, 7, 8, 9, 10, 11, 12];
@@ -206,16 +207,54 @@ async function resolverVehiculo(cliente, unidad, fusionarV, memo) {
 }
 
 /**
+ * Escribe el teléfono en un conductor que no lo tenía.
+ *
+ * La guarda del NOT EXISTS evita reventar contra el UNIQUE de telefono_e164.
+ * No es paranoia: el Excel genera VARIOS registros de conductor para la misma
+ * persona cuando la celda viene escrita distinto ('DANIEL V-12' y 'DANIEL V-12
+ * SALIDA 7:00 PM' son dos registros). Los dos casan con la misma fila de la
+ * hoja de teléfonos y el segundo chocaría. Si se dejara al UNIQUE reventar,
+ * la excepción abortaría TODA la transacción y la carga entera se perdería —
+ * justo lo contrario del principio rector de este importador.
+ *
+ * Se prefiere el registro con más asignaciones, que es el bueno; el otro se
+ * reporta como duplicado para que se atienda desde el portal.
+ *
+ * @returns {'aplicado'|'duplicado'}
+ */
+async function aplicarTelefono(cliente, conductorId, telefono) {
+  const { rowCount } = await cliente.query(
+    `UPDATE conductor
+        SET telefono_e164 = $2, actualizado_en = now()
+      WHERE id = $1
+        AND telefono_e164 IS NULL
+        AND NOT EXISTS (SELECT 1 FROM conductor o WHERE o.telefono_e164 = $2)`,
+    [conductorId, telefono],
+  );
+  return rowCount ? 'aplicado' : 'duplicado';
+}
+
+/**
  * Resuelve el conductor por el texto COMPLETO de la celda: 'RICARDO' aparece 64
  * veces en unidades distintas, así que el nombre solo no identifica a nadie.
  * La llave real es nombre + unidad.
  *
- * Si no existe, se da de alta SIN teléfono y la asignación queda 'por_resolver'.
+ * Si la hoja TELEFONOS trae el número de ese nombre + unidad, se le pone aquí
+ * mismo. Tiene que ser en este punto y no después: `completo` es lo que decide
+ * unas líneas más abajo si la asignación nace 'programada' o 'por_resolver', y
+ * en una base vacía el conductor se está creando en esta misma llamada.
+ *
+ * Si no hay número, se da de alta SIN teléfono y la asignación queda
+ * 'por_resolver'.
  */
-async function resolverConductor(cliente, textoCelda, nombre, crear, memo) {
+async function resolverConductor(cliente, textoCelda, nombre, unidad, crear, memo, tels) {
   const alias = normalizar(textoCelda);
   if (!alias) return { id: null, completo: false };
   if (memo.conductores.has(alias)) return memo.conductores.get(alias);
+
+  // La fila de la hoja de teléfonos que le toca a esta celda, si existe.
+  const k = llave(nombre, unidad);
+  const delDirectorio = tels?.dir?.mapa.get(k) ?? null;
 
   const existente = await cliente.query(
     `SELECT c.id, c.telefono_e164 IS NOT NULL AS completo
@@ -223,24 +262,48 @@ async function resolverConductor(cliente, textoCelda, nombre, crear, memo) {
       WHERE a.alias = $1`,
     [alias],
   );
+
+  let id;
+  let completo;
+  let nuevo = false;
+
   if (existente.rowCount) {
-    const r = { id: existente.rows[0].id, completo: existente.rows[0].completo };
-    memo.conductores.set(alias, r);
-    return r;
+    id = existente.rows[0].id;
+    completo = existente.rows[0].completo;
+  } else {
+    if (!crear) return { id: null, completo: false };
+    const { rows } = await cliente.query(
+      'INSERT INTO conductor (nombre) VALUES ($1) RETURNING id',
+      [nombre || alias],
+    );
+    id = rows[0].id;
+    await cliente.query(
+      `INSERT INTO conductor_alias (alias, conductor_id, origen)
+       VALUES ($1, $2, 'importador') ON CONFLICT (alias) DO NOTHING`,
+      [alias, id],
+    );
+    completo = false;
+    nuevo = true;
   }
 
-  if (!crear) return { id: null, completo: false };
+  if (delDirectorio && !completo) {
+    const r = await aplicarTelefono(cliente, id, delDirectorio.telefono);
+    if (r === 'aplicado') {
+      completo = true;
+      tels.aplicadas.add(k);
+      tels.reporte.aplicados++;
+    } else {
+      tels.aplicadas.add(k);
+      tels.reporte.duplicados.push({
+        nombre, unidad, telefono: delDirectorio.telefono, alias,
+      });
+    }
+  } else if (delDirectorio) {
+    tels.aplicadas.add(k);
+    tels.reporte.yaTenian++;
+  }
 
-  const { rows } = await cliente.query(
-    'INSERT INTO conductor (nombre) VALUES ($1) RETURNING id',
-    [nombre || alias],
-  );
-  await cliente.query(
-    `INSERT INTO conductor_alias (alias, conductor_id, origen)
-     VALUES ($1, $2, 'importador') ON CONFLICT (alias) DO NOTHING`,
-    [alias, rows[0].id],
-  );
-  const r = { id: rows[0].id, completo: false, nuevo: true };
+  const r = { id, completo, ...(nuevo ? { nuevo: true } : {}) };
   memo.conductores.set(alias, r);
   return r;
 }
@@ -295,7 +358,31 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
     multiples: [],
     ignoradas: [],
     fusionPrefijoV: fusionarV,
+    // Resumen de la pestaña TELEFONOS. Queda en null si el archivo no la trae:
+    // así se distingue 'el cliente no mandó la hoja' de 'la mandó vacía'.
+    telefonos: null,
   };
+
+  // La hoja de teléfonos se lee ANTES que las de programación. El teléfono es
+  // lo que decide si una asignación nace 'programada', y en una base vacía el
+  // conductor se crea al vuelo leyendo la programación: si el directorio no
+  // estuviera cargado ya, la primera carga dejaría todo en 'por_resolver'.
+  const dir = leerDirectorio(libro, fusionarV);
+  if (dir) {
+    reporte.telefonos = {
+      hoja: dir.hoja,
+      filas: dir.filas,
+      aplicados: 0,      // números que se escribieron en un conductor
+      yaTenian: 0,       // el conductor ya tenía número: no se pisa
+      invalidos: dir.invalidos,   // no son un teléfono válido (dígitos de más/menos)
+      repetidos: dir.repetidos,   // el mismo número en dos filas de la hoja
+      duplicados: [],    // el número ya lo tiene otro registro de la misma persona
+      sinAmarre: [],     // no hay ningún conductor con ese nombre + unidad
+    };
+  }
+  // `aplicadas` lleva las llaves ya atendidas para saber, al final, cuáles
+  // filas de la hoja se quedaron sin dueño.
+  const tels = dir ? { dir, reporte: reporte.telefonos, aplicadas: new Set() } : null;
 
   return enTransaccion(async (cliente) => {
     const carga = await cliente.query(
@@ -310,7 +397,9 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
     for (const hoja of libro.worksheets) {
       const cfg = HOJAS[normalizar(hoja.name)] ?? HOJAS[hoja.name];
       if (!cfg) {
-        reporte.ignoradas.push(hoja.name);
+        // TELEFONOS no es una hoja ignorada: ya se leyó arriba y tiene su
+        // propio apartado en el reporte. Listarla ahí asustaba sin motivo.
+        if (!esHojaTelefonos(hoja.name)) reporte.ignoradas.push(hoja.name);
         continue;
       }
 
@@ -372,7 +461,10 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
 
             if (!estatus) {
               vehiculo = await resolverVehiculo(cliente, unidad, fusionarV, memo);
-              conductor = await resolverConductor(cliente, parte, nombre, crearConductores, memo);
+              conductor = await resolverConductor(
+                cliente, parte, nombre, claveCanonica(unidad, fusionarV),
+                crearConductores, memo, tels,
+              );
               // Un conductor sale en varias celdas de la semana: el reporte
               // lista nombres, no apariciones.
               if (conductor.nuevo && !reporte.conductoresNuevos.includes(parte)) {
@@ -421,6 +513,74 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
       reporte.hojas[hoja.name] = enHoja;
     }
 
+    // ── Filas del padrón que no salieron en la programación de esta semana ──
+    //  La hoja TELEFONOS es un padrón, no el rol: trae gente que esta semana
+    //  no maneja. Si esa persona ya existe de una carga anterior, su número se
+    //  aplica aquí. Se busca por nombre + unidad contra el histórico de
+    //  asignaciones, que es lo único que amarra una persona a una unidad.
+    if (tels) {
+      for (const [k, f] of tels.dir.mapa) {
+        if (tels.aplicadas.has(k)) continue;
+
+        const { rows } = await cliente.query(
+          `SELECT c.id, count(*) AS asignaciones
+             FROM conductor c
+             JOIN asignacion a ON a.conductor_id = c.id
+             JOIN vehiculo   v ON v.id = a.vehiculo_id
+            WHERE upper(c.nombre) = $1
+              AND v.clave = $2
+              AND c.telefono_e164 IS NULL
+            GROUP BY c.id
+            ORDER BY count(*) DESC, c.id`,
+          [f.nombre, f.unidad],
+        );
+
+        if (!rows.length) {
+          // Nadie con ese nombre en esa unidad. Puede ser un conductor que
+          // todavía no aparece en ningún Excel, o que el cliente escribió la
+          // unidad distinto. Se reporta para resolverlo desde el portal.
+          reporte.telefonos.sinAmarre.push({
+            fila: f.fila, nombre: f.nombre, unidad: f.unidadBruta, telefono: f.telefono,
+          });
+          continue;
+        }
+
+        const estado = await aplicarTelefono(cliente, rows[0].id, f.telefono);
+        if (estado === 'aplicado') reporte.telefonos.aplicados++;
+        else reporte.telefonos.duplicados.push({
+          nombre: f.nombre, unidad: f.unidadBruta, telefono: f.telefono,
+        });
+
+        // Los demás registros con el mismo nombre + unidad son la misma
+        // persona escrita distinto en el Excel. No pueden compartir número
+        // (UNIQUE) y se listan para fusionarlos a mano.
+        for (const otro of rows.slice(1)) {
+          reporte.telefonos.duplicados.push({
+            nombre: f.nombre, unidad: f.unidadBruta, telefono: f.telefono, conductorId: otro.id,
+          });
+        }
+      }
+
+      // Un teléfono aplicado en la pasada de arriba llega tarde: la asignación
+      // ya se guardó como 'por_resolver'. Se reevalúan las de ESTA carga.
+      // Sólo se toca 'por_resolver': 'cancelada', 'vacaciones' y
+      // 'fuera_contrato' mandan sobre el teléfono y no se pisan.
+      const { rowCount: rescatadas } = await cliente.query(
+        `UPDATE asignacion a
+            SET estado = 'programada'
+           FROM conductor c, vehiculo v
+          WHERE a.carga_id = $1
+            AND a.estado = 'por_resolver'
+            AND c.id = a.conductor_id
+            AND v.id = a.vehiculo_id
+            AND v.contratado
+            AND c.telefono_e164 IS NOT NULL`,
+        [cargaId],
+      );
+      reporte.resueltas += rescatadas;
+      reporte.pendientes -= rescatadas;
+    }
+
     await cliente.query(
       `UPDATE carga
           SET semana_inicio = $2, semana_fin = $3,
@@ -432,7 +592,14 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
     );
 
     log.info(
-      { cargaId, leidas: reporte.leidas, pendientes: reporte.pendientes },
+      {
+        cargaId,
+        leidas: reporte.leidas,
+        pendientes: reporte.pendientes,
+        telefonos: reporte.telefonos
+          ? `${reporte.telefonos.aplicados}/${reporte.telefonos.filas}`
+          : 'sin hoja',
+      },
       'carga de Excel completada',
     );
     return { cargaId, semanaInicio: minFecha, semanaFin: maxFecha, ...reporte };

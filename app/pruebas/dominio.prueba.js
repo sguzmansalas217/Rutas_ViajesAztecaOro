@@ -10,6 +10,7 @@ import {
   claveCanonica, partirMultiples, aE164,
 } from '../src/dominio/normalizar.js';
 import { calcularMensualidad } from '../src/dominio/cobro.js';
+import { unidadDeHoja, llave } from '../src/importador/telefonos.js';
 import { distanciaMetros } from '../src/dominio/geocerca.js';
 
 test('normalizar quita acentos, comas y colapsa espacios', () => {
@@ -100,4 +101,33 @@ test('Haversine da distancias razonables para las geocercas', () => {
   const d = distanciaMetros(23.1774, -102.8665, 22.7709, -102.5832);
   assert.ok(d > 50_000 && d < 60_000, `distancia inesperada: ${Math.round(d)} m`);
   assert.equal(Math.round(distanciaMetros(23.1774, -102.8665, 23.1774, -102.8665)), 0);
+});
+
+test('la hoja TELEFONOS habla de las mismas unidades que la programación', () => {
+  // 'ECO' es la etiqueta de económico, no una serie: ECO 82 es la unidad 82.
+  // Se confirmó cruzando la hoja con la programación (ECO 82 = ARTURO REYES,
+  // unidad 82). Si esto se rompe, los teléfonos no casan y todo el archivo se
+  // queda en 'por_resolver' sin decir por qué.
+  assert.equal(unidadDeHoja('ECO 82'), '82');
+  assert.equal(unidadDeHoja('ECO 09'), '9');
+  assert.equal(unidadDeHoja('224'), '224');
+
+  // Las dos hojas tienen que producir la MISMA llave o el amarre falla.
+  assert.equal(unidadDeHoja('V-37'), claveCanonica(partirCelda('MARCO V-37').unidad));
+  assert.equal(unidadDeHoja('ECO 41'), claveCanonica(partirCelda('ALFREDO 41').unidad));
+
+  // La serie C sí es otra flota y no se fusiona: C-09 nunca es la unidad 9.
+  assert.equal(unidadDeHoja('C-09'), 'C-9');
+  assert.notEqual(unidadDeHoja('C-09'), unidadDeHoja('ECO 09'));
+
+  // Y la llave del directorio es nombre + unidad, nunca el nombre solo: en el
+  // archivo real hay dos OSCAR, uno en la 181 y otro en la 34.
+  assert.notEqual(llave('OSCAR', '181'), llave('OSCAR', '34'));
+});
+
+test('el teléfono al que le falta un dígito se rechaza, no se completa', () => {
+  // Fila 34 del archivo real: DAVID, ECO 29, '493159768'. Son 9 dígitos.
+  // Adivinar el que falta mandaría el marcaje a un desconocido.
+  assert.equal(aE164('493159768'), null);
+  assert.equal(aE164('4931597689'), '+524931597689');
 });

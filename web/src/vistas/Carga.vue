@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { api } from '../api.js';
 
 const archivo = ref(null);
@@ -28,6 +28,19 @@ async function subir() {
     subiendo.value = false;
   }
 }
+
+// Las filas de la hoja de teléfonos que necesitan una mano. Se arma como texto
+// corrido porque son pocas (4 en el archivo real) y una tabla sería exagerado.
+const pendientesTel = computed(() => {
+  const t = reporte.value?.telefonos;
+  if (!t) return [];
+  return [
+    ...t.invalidos.map((i) => `Fila ${i.fila} · ${i.nombre} (${i.unidad}): «${i.texto}» no es un teléfono, trae ${i.digitos} dígitos.`),
+    ...t.repetidos.map((r) => `El número ${r.telefono} está repetido: ${r.filas.map((f) => f.nombre).join(' y ')}. Sólo se aplicó al primero.`),
+    ...t.sinAmarre.map((s) => `Fila ${s.fila} · ${s.nombre} (${s.unidad}): no hay ningún conductor con ese nombre en esa unidad.`),
+    ...t.duplicados.map((d) => `${d.nombre} (${d.unidad}) aparece más de una vez en el Excel escrito distinto; sólo un registro se quedó con el número.`),
+  ];
+});
 
 onMounted(cargarHistorial);
 </script>
@@ -58,6 +71,16 @@ onMounted(cargarHistorial);
       {{ reporte.pendientes }} quedaron por resolver (casi siempre falta el teléfono).
       Ve a <router-link to="/por-resolver">Por resolver</router-link>.
     </div>
+    <!-- Pestaña TELEFONOS: lo que se aplicó y, sobre todo, lo que hay que
+         corregir a mano. Lo que no casa por nombre + unidad no se adivina. -->
+    <div v-if="reporte.telefonos" class="ok">
+      Hoja «{{ reporte.telefonos.hoja }}»: {{ reporte.telefonos.aplicados }} de
+      {{ reporte.telefonos.filas }} teléfonos aplicados.
+    </div>
+    <div v-if="pendientesTel.length" class="aviso">
+      <div v-for="(t, i) in pendientesTel" :key="i">{{ t }}</div>
+    </div>
+
     <div class="tarjetas">
       <div v-for="(n, hoja) in reporte.hojas" :key="hoja" class="tarjeta">
         <div class="n">{{ n }}</div><div class="r">{{ hoja }}</div>
