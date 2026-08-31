@@ -71,8 +71,10 @@ function revisarVariables() {
   if (SECRETO) console.log(c.ok(`WA_APP_SECRET ${c.gris('— firma de los webhooks')}`));
   else falla('WA_APP_SECRET está vacío', 'Llena WA_APP_SECRET: sin él el webhook acepta ubicaciones falsas y en producción el API ni arranca');
 
-  if (VERIFY && VERIFY !== 'cambiame') console.log(c.ok('WA_VERIFY_TOKEN'));
-  else console.log(c.ojo(`WA_VERIFY_TOKEN sin definir ${c.gris('— lo inventas tú, va igual aquí y en el panel de Meta')}`));
+  // Se compara con startsWith y no con igualdad porque el placeholder del
+  // .env.example es "cambiame_cadena_larga": con igualdad pasaba la revisión.
+  if (VERIFY && !VERIFY.startsWith('cambiame')) console.log(c.ok('WA_VERIFY_TOKEN'));
+  else console.log(c.ojo(`WA_VERIFY_TOKEN sigue en el valor de ejemplo ${c.gris('— lo inventas tú, va igual aquí y en el panel de Meta')}`));
 
   if (!APP_ID) {
     console.log(c.info(`WA_APP_ID no está ${c.gris('— opcional, pero permite ver cuándo caduca el token')}`));

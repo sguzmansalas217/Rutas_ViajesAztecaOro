@@ -10,6 +10,8 @@
 //  BullMQ se usa sólo para lo que sí necesita cola: el envío en sí, con
 //  reintentos y control de concurrencia contra el rate limit de Meta.
 // ============================================================================
+import { writeFile } from 'node:fs/promises';
+
 import { Queue, Worker } from 'bullmq';
 import IORedis from 'ioredis';
 
@@ -155,6 +157,22 @@ async function avisoDeCorte() {
   if (!ya) log.warn({ periodo }, '📄 el periodo anterior sigue sin cerrar');
 }
 
+// ── Latido ──────────────────────────────────────────────────────────────────
+//  El trabajador no escucha ningún puerto, así que no puede compartir el
+//  healthcheck de la API (curl a /salud): Docker lo daba por enfermo siempre.
+//  En vez de eso deja una marca de tiempo cada vez que el tic TERMINA BIEN.
+//  Que el proceso siga vivo no basta: si el tic revienta cada 30 s el bucle
+//  sigue girando, nadie manda nada y por fuera se vería sano.
+const LATIDO = '/tmp/latido-trabajador';
+
+async function latir() {
+  try {
+    await writeFile(LATIDO, new Date().toISOString());
+  } catch (e) {
+    log.warn({ err: e }, 'no se pudo escribir el latido');
+  }
+}
+
 // ── Arranque ────────────────────────────────────────────────────────────────
 let corriendo = true;
 
@@ -166,6 +184,7 @@ async function principal() {
     try {
       await tic();
       await avisoDeCorte();
+      await latir();
     } catch (e) {
       log.error({ err: e }, 'error en el tic del trabajador');
     }

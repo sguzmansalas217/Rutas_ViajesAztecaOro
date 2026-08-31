@@ -67,6 +67,15 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-monitoreo}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-monitoreo}
       REDIS_URL: redis://redis:6379
       TZ: ${TZ:-America/Mexico_City}
+    # El de la imagen es el de la API (curl a /salud) y aquí no hay puerto que
+    # escuchar. Se revisa el latido que deja el tic: si tiene más de dos minutos
+    # el trabajador está atorado aunque el proceso siga de pie.
+    healthcheck:
+      test: ["CMD-SHELL", "test $(( $(date +%s) - $(stat -c %Y /tmp/latido-trabajador) )) -lt 120"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
     depends_on:
       api: { condition: service_started }
       db: { condition: service_healthy }
