@@ -22,6 +22,22 @@ RUTA="/opt/monitoreo-rutas"
 USUARIO="despliegue"
 REPO="https://github.com/sguzmansalas217/Rutas_ViajesAztecaOro.git"
 
+# Con el repositorio privado hace falta un token de lectura. Se pasa por el
+# entorno y no como argumento: los argumentos salen en 'ps' y quedan en el
+# historial de la consola, el entorno de este proceso no.
+#
+#   export GH_TOKEN=github_pat_...
+#   curl -fsSL -H "Authorization: Bearer $GH_TOKEN" <raw>/provisionar.sh | bash -s -- dominio correo
+#
+# El token queda dentro de la URL del remoto en .git/config, que es como
+# funcionan los tokens de despliegue. El archivo es del usuario despliegue en
+# un servidor al que sólo entras tú; aun así conviene que el token sea de sólo
+# lectura y limitado a este repositorio (fine-grained, Contents: Read-only).
+GH_TOKEN="${GH_TOKEN:-}"
+if [ -n "$GH_TOKEN" ]; then
+  REPO="https://x-access-token:$GH_TOKEN@github.com/sguzmansalas217/Rutas_ViajesAztecaOro.git"
+fi
+
 [ -z "$DOMINIO" ] && { echo "Uso: provisionar.sh <dominio> <correo>"; exit 1; }
 
 echo "▶ Actualizando el sistema…"
