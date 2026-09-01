@@ -4,10 +4,15 @@
 #
 #  Ubuntu 24.04 limpio en DigitalOcean (2 GB para empezar).
 #
-#  Uso, como root en el droplet recién creado:
-#     curl -fsSL https://raw.githubusercontent.com/<usuario>/monitoreo-rutas/main/infra/provisionar.sh | bash -s -- monitoreo.tudominio.com tu@correo.com
+#  Uso, como root en el droplet recién creado (consola web de DigitalOcean):
+#     curl -fsSL https://raw.githubusercontent.com/sguzmansalas217/Rutas_ViajesAztecaOro/main/infra/provisionar.sh | bash -s -- monitoreo.tudominio.com tu@correo.com
 #
-#  Deja el servidor listo para que ./desplegar.sh haga todo lo demás.
+#  Si todavía no hay dominio, sirve la IP con sslip.io —resuelve a la IP que
+#  lleva en el nombre y Let's Encrypt le emite certificado igual, así que el
+#  webhook de Meta funciona sin comprar nada:
+#     ... | bash -s -- 159-65-1-2.sslip.io tu@correo.com
+#
+#  Deja el servidor listo y el repositorio clonado. Después: infra/arrancar.sh
 # ============================================================================
 set -euo pipefail
 
@@ -15,6 +20,7 @@ DOMINIO="${1:-}"
 CORREO="${2:-}"
 RUTA="/opt/monitoreo-rutas"
 USUARIO="despliegue"
+REPO="https://github.com/sguzmansalas217/Rutas_ViajesAztecaOro.git"
 
 [ -z "$DOMINIO" ] && { echo "Uso: provisionar.sh <dominio> <correo>"; exit 1; }
 
@@ -72,9 +78,51 @@ if [ ! -f /swapfile ]; then
   echo '/swapfile none swap sw 0 0' >> /etc/fstab
 fi
 
-echo "▶ Carpeta de la aplicación…"
+echo "▶ Clonando el repositorio…"
 mkdir -p "$RUTA"
 chown -R $USUARIO:$USUARIO "$RUTA"
+if [ -d "$RUTA/.git" ]; then
+  su - $USUARIO -c "cd $RUTA && git fetch origin main -q && git reset --hard origin/main -q"
+  echo "  ya estaba, actualizado"
+else
+  # Se clona al vuelo dentro de la carpeta: git se niega a clonar sobre un
+  # directorio que ya existe aunque esté vacío en algunas versiones.
+  su - $USUARIO -c "git clone -q '$REPO' '$RUTA.tmp' && cp -a '$RUTA.tmp/.' '$RUTA/' && rm -rf '$RUTA.tmp'"
+fi
+# Cinturón y tirantes: el bit va puesto en el índice de git, pero si alguna vez
+# se pierde al pasar por Windows, aquí no se nota hasta el "permission denied".
+chmod +x "$RUTA"/infra/*.sh "$RUTA/desplegar.sh" 2>/dev/null || true
+
+echo "▶ Archivo .env…"
+# Se generan aquí y no a mano. Estas cadenas son las que sostienen toda la
+# seguridad del sistema, y teclearlas en una consola web es exactamente como
+# se terminan usando contraseñas de ocho letras. Sólo se usan caracteres
+# alfanuméricos: el valor viaja por sed, por env_file de Docker y por la URL
+# de conexión de Postgres, y en cualquiera de los tres un signo de puntuación
+# mal colocado rompe algo lejos de aquí y difícil de rastrear.
+if [ ! -f "$RUTA/.env" ]; then
+  CLAVE_BD="$(openssl rand -hex 24)"
+  SECRETO_JWT="$(openssl rand -hex 48)"
+  TOKEN_VERIFY="$(openssl rand -hex 24)"
+  CLAVE_ADMIN="$(openssl rand -hex 8)"
+  IP_PUBLICA="$(curl -fsS -m 5 https://ifconfig.me || echo IP_DEL_DROPLET)"
+
+  cp "$RUTA/.env.example" "$RUTA/.env"
+  sed -i \
+    -e "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$CLAVE_BD|" \
+    -e "s|^DATABASE_URL=.*|DATABASE_URL=postgres://monitoreo:$CLAVE_BD@db:5432/monitoreo|" \
+    -e "s|^JWT_SECRETO=.*|JWT_SECRETO=$SECRETO_JWT|" \
+    -e "s|^WA_VERIFY_TOKEN=.*|WA_VERIFY_TOKEN=$TOKEN_VERIFY|" \
+    -e "s|^ADMIN_CLAVE=.*|ADMIN_CLAVE=$CLAVE_ADMIN|" \
+    -e "s|^URL_PUBLICA=.*|URL_PUBLICA=https://$DOMINIO|" \
+    -e "s|^DESPLIEGUE_HOST=.*|DESPLIEGUE_HOST=$USUARIO@$IP_PUBLICA|" \
+    "$RUTA/.env"
+  chown $USUARIO:$USUARIO "$RUTA/.env"
+  chmod 600 "$RUTA/.env"
+  echo "  generado con secretos aleatorios"
+else
+  echo "  ya existía, no se toca"
+fi
 
 echo "▶ Certificado provisional autofirmado…"
 # Nginx no arranca sin certificado. Se pone uno autofirmado para que el primer
@@ -121,17 +169,32 @@ chmod +x /usr/local/bin/respaldar-monitoreo
 cat <<FIN
 
 ════════════════════════════════════════════════════════════════════
-  Droplet listo.
+  Droplet listo. Repositorio en $RUTA y .env generado.
 
-  Falta:
-   1. Apuntar el DNS de $DOMINIO a la IP de este droplet.
-   2. Clonar el repo:
-        su - $USUARIO
-        git clone git@github.com:<usuario>/monitoreo-rutas.git $RUTA
-   3. Crear el .env real en $RUTA/.env (usa .env.example de guía).
-        openssl rand -hex 48   → JWT_SECRETO
-        openssl rand -hex 24   → POSTGRES_PASSWORD
-   4. Desde tu máquina:  ./desplegar.sh
-   5. Ya con DNS arriba: /usr/local/bin/renovar-certificado
+  Sigue, como $USUARIO (su - $USUARIO):
+
+   1. Captura las credenciales de Meta. Sin editor, una por una:
+        cd $RUTA
+        ./infra/env.sh WA_ID_NUMERO   <id del número>
+        ./infra/env.sh WA_TOKEN       <token permanente>
+        ./infra/env.sh WA_APP_SECRET  <app secret>
+        ./infra/env.sh WA_ID_CUENTA   <id de la cuenta WABA>
+
+   2. Levanta todo:
+        ./infra/arrancar.sh
+
+   3. Con el DNS de $DOMINIO ya apuntando a este droplet,
+      cambia el certificado autofirmado por uno de verdad:
+        sudo /usr/local/bin/renovar-certificado
+
+   4. En Meta, webhook:
+        URL    https://$DOMINIO/webhook
+        Token  el valor de WA_VERIFY_TOKEN en el .env
+               (verlo:  grep WA_VERIFY_TOKEN $RUTA/.env)
+
+  Los datos de acceso al portal están en el .env:
+        grep -E 'ADMIN_CORREO|ADMIN_CLAVE' $RUTA/.env
+
+  De aquí en adelante, desde tu máquina basta con ./desplegar.sh
 ════════════════════════════════════════════════════════════════════
 FIN
