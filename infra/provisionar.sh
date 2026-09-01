@@ -101,9 +101,17 @@ if [ -d "$RUTA/.git" ]; then
   su - $USUARIO -c "cd $RUTA && git fetch origin main -q && git reset --hard origin/main -q"
   echo "  ya estaba, actualizado"
 else
-  # Se clona al vuelo dentro de la carpeta: git se niega a clonar sobre un
-  # directorio que ya existe aunque esté vacío en algunas versiones.
-  su - $USUARIO -c "git clone -q '$REPO' '$RUTA.tmp' && cp -a '$RUTA.tmp/.' '$RUTA/' && rm -rf '$RUTA.tmp'"
+  # Se clona a una carpeta temporal y se copia el contenido, no directamente
+  # sobre $RUTA: git se niega a clonar sobre un directorio que ya existe.
+  #
+  # La temporal va en el HOME del usuario y no junto a $RUTA. /opt es de root
+  # y despliegue no puede crear nada ahí; sólo se le dio $RUTA. En su casa sí.
+  su - $USUARIO -c "
+    rm -rf ~/.clon-tmp
+    git clone -q '$REPO' ~/.clon-tmp
+    cp -a ~/.clon-tmp/. '$RUTA/'
+    rm -rf ~/.clon-tmp
+  "
 fi
 # Cinturón y tirantes: el bit va puesto en el índice de git, pero si alguna vez
 # se pierde al pasar por Windows, aquí no se nota hasta el "permission denied".
