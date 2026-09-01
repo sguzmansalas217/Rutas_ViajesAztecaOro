@@ -220,15 +220,26 @@ h3 { font-weight: 650; color: var(--texto2); }
 .tarjeta.amarillo .n { color: var(--amarillo); }
 .tarjeta.rojo .n     { color: var(--rojo); }
 
-/* ── Tablas ───────────────────────────────────────────────────────────── */
+/* ── Tablas ───────────────────────────────────────────────────────────────
+   Sin overflow aquí. Un overflow distinto de visible convierte a la tabla en
+   el marco de referencia del position:sticky del encabezado, y entonces el
+   top:60px —que existe para dejar libre la barra superior— lo empuja 60px
+   hacia abajo DENTRO de la tabla: el encabezado se monta sobre las primeras
+   filas y por el hueco de arriba se asoman. Las esquinas se redondean celda
+   por celda, que es lo que el overflow venía a resolver.                   */
 table {
   width: 100%;
   border-collapse: separate; border-spacing: 0;
   background: var(--panel);
   border: 1px solid var(--borde); border-radius: 12px;
   box-shadow: var(--sombra1);
-  overflow: hidden;
 }
+/* 11px y no 12: el borde de 1px va por fuera del radio de la celda. */
+thead tr:first-child th:first-child { border-top-left-radius: 11px; }
+thead tr:first-child th:last-child  { border-top-right-radius: 11px; }
+tbody tr:last-child td:first-child  { border-bottom-left-radius: 11px; }
+tbody tr:last-child td:last-child   { border-bottom-right-radius: 11px; }
+
 th, td { text-align: left; padding: 11px 14px; font-size: 13px; }
 th {
   position: sticky; top: 60px; z-index: 10;
