@@ -101,5 +101,6 @@ fi
 
 $COMPOSE ps
 verde "
-✓ Arriba en $DOMINIO
+✓ Arriba
+  Portal:             $DOMINIO/monitoreo
   Webhook para Meta:  $DOMINIO/webhook"

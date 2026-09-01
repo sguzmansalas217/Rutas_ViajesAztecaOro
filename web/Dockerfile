@@ -11,5 +11,9 @@ COPY . .
 RUN npm run build
 
 FROM nginx:1.27-alpine
-COPY --from=compilacion /web/dist /usr/share/nginx/html
+# Los estáticos van a html/monitoreo/ y no a html/, para que coincidan con el
+# 'base' de vite.config.js. Puestos así, el bloque location /monitoreo/ de
+# Nginx funciona con un root normal y sin alias —alias con try_files es una
+# fuente clásica de 404 que sólo se notan en producción—.
+COPY --from=compilacion /web/dist /usr/share/nginx/html/monitoreo
 EXPOSE 80 443

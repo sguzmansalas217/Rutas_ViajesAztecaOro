@@ -26,7 +26,10 @@ async function pedir(metodo, ruta, cuerpo, opciones = {}) {
     body = JSON.stringify(cuerpo);
   }
 
-  const r = await fetch(`/api${ruta}`, { method: metodo, headers: cabeceras, body, credentials: 'include', ...opciones });
+  // BASE_URL lo inyecta Vite con el valor de 'base' en vite.config.js y ya trae
+  // la diagonal final ('/monitoreo/'). No se escribe la ruta a mano aquí: si el
+  // sistema se mueve de sitio, esto lo sigue solo.
+  const r = await fetch(`${import.meta.env.BASE_URL}api${ruta}`, { method: metodo, headers: cabeceras, body, credentials: 'include', ...opciones });
 
   if (r.status === 401) {
     fijarToken(null);

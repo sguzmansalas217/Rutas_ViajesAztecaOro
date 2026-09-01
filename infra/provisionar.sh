@@ -192,6 +192,11 @@ cat <<FIN
         Token  el valor de WA_VERIFY_TOKEN en el .env
                (verlo:  grep WA_VERIFY_TOKEN $RUTA/.env)
 
+  El portal NO está en la raíz: cuelga de /monitoreo, para dejar libre la
+  raíz del dominio. La raíz redirige allá mientras no haya otra cosa.
+
+        https://$DOMINIO/monitoreo
+
   Los datos de acceso al portal están en el .env:
         grep -E 'ADMIN_CORREO|ADMIN_CLAVE' $RUTA/.env
 

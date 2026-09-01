@@ -61,8 +61,13 @@ make arriba                 # db, redis, api y trabajador
 cd web && npm install && npm run dev
 ```
 
-- Portal: http://localhost:5173
+- Portal: http://localhost:5173/monitoreo/
 - API: http://localhost:3000/salud
+
+El portal cuelga de `/monitoreo` y no de la raíz, en desarrollo igual que en
+producción, porque el dominio es de la agencia y su página va en la raíz. El
+prefijo se define en `web/vite.config.js`; si se cambia, hay que cambiarlo
+también en `web/Dockerfile` y en `infra/nginx/default.conf`.
 
 Con `WA_SIMULADO=1` (predeterminado) **no se manda nada a Meta**: los mensajes se
 registran en base y salen en el log. Se puede probar el flujo completo sin gastar.
