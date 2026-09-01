@@ -265,6 +265,43 @@ tbody tr:hover { background: #f2f7ff; }
 .chip.rojo     { background: #ffe4e6; color: #9f1239; border-color: #f7c0c8; }
 .chip.gris     { background: #eef1f7; color: #64748b; border-color: #e0e6f0; }
 
+/* ── Semáforo de marcajes ─────────────────────────────────────────────────
+   Relleno sólido, no pastel. El tablero se mira de lejos y de reojo mientras
+   pasan otras cosas: lo rojo tiene que saltar sin que haya que buscarlo. El
+   símbolo va además del color, porque el color solo no le sirve a quien no
+   lo distingue.                                                            */
+.faro {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 7px;
+  font-size: 14px; font-weight: 700; line-height: 1;
+  border: 1px solid transparent;
+}
+.faro.verde     { background: #16a34a; color: #fff;     border-color: #15803d; }
+.faro.amarillo  { background: #f59e0b; color: #422006;  border-color: #d97706; }
+.faro.rojo      { background: #e11d48; color: #fff;     border-color: #9f1239;
+                  box-shadow: 0 0 0 3px rgba(225, 29, 72, .20); }
+.faro.pendiente { background: #eef1f7; color: #94a3b8;  border-color: #dde4ef; }
+.faro.ninguno   { background: transparent; border-color: #e8edf6; }
+
+th.col-faro, td.col-faro { text-align: center; padding: 6px 5px; }
+.cab-faro { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.cab-faro select {
+  padding: 2px 3px; font-size: 10px; border-radius: 6px;
+  max-width: 80px; color: var(--texto2); font-weight: 600;
+}
+/* El filtro activo se marca: si no, una columna filtrada se ve igual que una
+   completa y el tablero miente por omisión. */
+.cab-faro select.activo {
+  border-color: var(--marca-clara); background: var(--marca-tenue);
+  color: var(--marca);
+}
+
+/* La fila entera se marca, no sólo la celda: con diez columnas, el ojo pierde
+   el renglón entre el semáforo y el nombre del conductor. */
+tr.tiene-rojo td:first-child { box-shadow: inset 3px 0 0 var(--rojo); }
+tbody tr.tiene-rojo          { background: #fff6f7; }
+tbody tr.tiene-rojo:hover    { background: #ffecef; }
+
 /* ── Controles ────────────────────────────────────────────────────────── */
 button, .boton {
   display: inline-flex; align-items: center; gap: 7px;
