@@ -131,7 +131,16 @@ body {
   padding: 12px 14px 14px;
   border-top: 1px solid rgba(255, 255, 255, .09);
 }
-.usuario { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+/* El bloque del usuario es un enlace a Mi cuenta, así que le cae encima la
+   regla de arriba de '.lateral a'. Se le devuelve lo suyo con dos clases —así
+   gana en especificidad— y se le quita la barra dorada del renglón activo:
+   esa cuelga de la sangría del menú y aquí, dentro del pie, quedaría torcida. */
+.lateral .usuario {
+  display: flex; align-items: center; gap: 10px;
+  margin: 0 0 10px; padding: 6px;
+  border-radius: 8px; color: inherit;
+}
+.lateral .usuario.router-link-exact-active::before { content: none; }
 .avatar {
   width: 32px; height: 32px; flex-shrink: 0;
   display: grid; place-items: center; border-radius: 50%;
@@ -354,7 +363,6 @@ input::placeholder { color: #9aa8bd; }
 
 .tenue-txt { color: var(--tenue); font-size: 12px; }
 
-/* ── Acceso ───────────────────────────────────────────────────────────── */
 /* ── Entrada ──────────────────────────────────────────────────────────────
    Ocupa la ventana entera: en el login no hay barra lateral ni cabecera, y
    la clase .sin-sesion de App.vue le quita el relleno al contenedor para que el
@@ -434,6 +442,39 @@ input::placeholder { color: #9aa8bd; }
   .login .sello ul { display: none; }
   .login .acceso { padding: 32px 32px 34px; }
 }
+
+/* ── Mi cuenta ────────────────────────────────────────────────────────────
+   Dos cajas lado a lado en pantalla ancha y una debajo de otra cuando no
+   caben. No se usa .tarjeta: esa levanta al pasar el ratón y aquí no hay nada
+   que abrir, sólo leer y llenar.                                            */
+.cuenta {
+  display: grid; gap: 18px; align-items: start;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  max-width: 860px;
+}
+.caja {
+  background: var(--panel); border: 1px solid var(--borde);
+  border-radius: var(--radio); box-shadow: var(--sombra1);
+  padding: 20px 22px;
+}
+.caja h3 { margin: 0 0 16px; font-size: 14px; }
+
+.cuenta dl {
+  display: grid; grid-template-columns: auto 1fr; gap: 9px 18px;
+  margin: 0 0 16px; font-size: 13px;
+}
+.cuenta dt { color: var(--tenue); }
+.cuenta dd { margin: 0; font-weight: 600; word-break: break-word; }
+.cuenta dd.rol { text-transform: capitalize; }
+
+.cuenta label {
+  display: block; margin-bottom: 6px;
+  font-size: 12px; font-weight: 600; color: var(--texto2);
+}
+.cuenta input { width: 100%; margin-bottom: 14px; padding: 10px 12px; }
+/* Sube el renglón del mínimo para que se pegue al campo al que se refiere. */
+.cuenta form .tenue-txt { margin: -9px 0 14px; }
+.cuenta button { width: 100%; justify-content: center; padding: 11px; margin-top: 4px; }
 
 /* ── Pantallas angostas: el menú se queda sólo con los iconos ─────────── */
 @media (max-width: 1000px) {

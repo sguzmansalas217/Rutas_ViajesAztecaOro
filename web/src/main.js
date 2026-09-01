@@ -14,6 +14,8 @@ const rutas = [
   { path: '/unidades', component: () => import('./vistas/Unidades.vue') },
   { path: '/carga', component: () => import('./vistas/Carga.vue') },
   { path: '/cobro', component: () => import('./vistas/Cobro.vue') },
+  // No va en el menú: se llega desde el bloque del usuario, abajo del lateral.
+  { path: '/cuenta', component: () => import('./vistas/Cuenta.vue') },
   { path: '/:resto(.*)', redirect: '/' },
 ];
 

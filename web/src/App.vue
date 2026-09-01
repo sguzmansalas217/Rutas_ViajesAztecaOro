@@ -103,13 +103,16 @@ async function salir() {
       </nav>
 
       <div class="pie">
-        <div class="usuario">
+        <!-- El bloque del usuario es la entrada a Mi cuenta. No se le pone
+             renglón propio en el menú: se toca una vez cada varios meses y
+             ahí es donde todo el mundo lo busca. -->
+        <router-link to="/cuenta" class="usuario" title="Mi cuenta">
           <div class="avatar">{{ iniciales }}</div>
           <div class="usuario-txt">
             <strong>{{ usuario?.nombre ?? '—' }}</strong>
             <span>{{ usuario?.rol ?? '' }}</span>
           </div>
-        </div>
+        </router-link>
         <button class="salir" title="Cerrar sesión" @click="salir">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
                stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">

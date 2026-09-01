@@ -64,7 +64,11 @@ export default async function auth(app) {
     }
     const u = await unaFila('SELECT hash_clave FROM usuario WHERE id = $1', [req.user.id]);
     if (!verificarClave(datos.data.actual, u.hash_clave)) {
-      return reply.code(401).send({ error: 'La contraseña actual no coincide' });
+      // 400 y no 401: la sesión es válida —lo que viene mal es un campo del
+      // cuerpo—. Con 401 el cliente entiende "se te venció la sesión", cierra
+      // y manda al login, y quien se equivoca al teclear su contraseña actual
+      // acaba fuera del sistema sin saber por qué.
+      return reply.code(400).send({ error: 'La contraseña actual no coincide' });
     }
     await consultar('UPDATE usuario SET hash_clave = $2 WHERE id = $1', [req.user.id, hashClave(datos.data.nueva)]);
     await auditar({ usuarioId: req.user.id, accion: 'cambio_clave', entidad: 'usuario', entidadId: req.user.id, ip: req.ip });
