@@ -20,6 +20,20 @@ rojo()  { printf '\033[31m%s\033[0m\n' "$*"; }
 verde() { printf '\033[32m%s\033[0m\n' "$*"; }
 paso()  { printf '\n\033[1;34m▶ %s\033[0m\n' "$*"; }
 
+# Corriendo como root, todo lo que genere Docker aquí adentro queda de root y
+# después el usuario despliegue ya no puede con ello. Git avisa antes con un
+# "dubious ownership" que no dice nada de esto y manda a poner un safe.directory
+# que sólo esconde el problema. Se para aquí, con el motivo.
+if [ "$(id -u)" = 0 ]; then
+  rojo "✗ Esto no va como root."
+  echo "  El repositorio y los datos son del usuario 'despliegue'."
+  echo
+  echo "     su - despliegue"
+  echo "     cd $AQUI"
+  echo "     ./infra/arrancar.sh"
+  exit 1
+fi
+
 [ -f .env ] || { rojo "✗ Falta $AQUI/.env — corre primero infra/provisionar.sh"; exit 1; }
 
 valor() { grep -E "^$1=" .env | head -1 | cut -d= -f2- || true; }
