@@ -200,8 +200,9 @@ cat <<FIN
         ./infra/arrancar.sh
 
    3. Con el DNS de $DOMINIO ya apuntando a este droplet,
-      cambia el certificado autofirmado por uno de verdad:
-        sudo /usr/local/bin/renovar-certificado
+      cambia el certificado autofirmado por uno de verdad. Esto va como
+      root: sal de $USUARIO con 'exit' antes de correrlo.
+        /usr/local/bin/renovar-certificado
 
    4. En Meta, webhook:
         URL    https://$DOMINIO/webhook

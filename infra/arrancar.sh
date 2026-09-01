@@ -95,7 +95,7 @@ if [ -f infra/certs/fullchain.pem ]; then
   EMISOR="$(openssl x509 -in infra/certs/fullchain.pem -noout -issuer  2>/dev/null | sed 's/^issuer=*//')"
   if [ -n "$SUJETO" ] && [ "$SUJETO" = "$EMISOR" ]; then
     echo "  Certificado autofirmado. Meta rechaza el webhook con este."
-    echo "     sudo /usr/local/bin/renovar-certificado"
+    echo "     exit  (para volver a root)  &&  /usr/local/bin/renovar-certificado"
   fi
 fi
 
