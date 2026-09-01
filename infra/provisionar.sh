@@ -44,7 +44,11 @@ echo "▶ Actualizando el sistema…"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get upgrade -y -qq
-apt-get install -y -qq ca-certificates curl git ufw fail2ban unattended-upgrades openssl
+apt-get install -y -qq ca-certificates curl git ufw fail2ban unattended-upgrades openssl cron
+# Sin cron no hay renovación del certificado ni respaldo diario. Viene en la
+# imagen de DigitalOcean, pero se pide explícito: si algún día falta, el
+# sistema seguiría funcionando y el certificado caducaría a los tres meses.
+systemctl enable --now cron
 
 echo "▶ Instalando Docker…"
 if ! command -v docker >/dev/null; then
@@ -174,7 +178,13 @@ cp -L /etc/letsencrypt/live/$DOMINIO/privkey.pem   $RUTA/infra/certs/privkey.pem
 cd $RUTA && docker compose exec -T web nginx -s reload || true
 EOF
 chmod +x /usr/local/bin/renovar-certificado
-(crontab -l 2>/dev/null | grep -v renovar-certificado; echo "17 3 * * 1 /usr/local/bin/renovar-certificado >> /var/log/certbot.log 2>&1") | crontab -
+# El || true no es adorno. En un droplet recién hecho todavía no hay crontab,
+# así que 'crontab -l' falla, el grep se queda sin entrada y sale con 1, y como
+# el subshell hereda el set -e se muere ANTES del echo. Con pipefail eso tumba
+# el script entero sin imprimir nada —el error iba a /dev/null—. Se veía como
+# que el provisionamiento terminaba bien a media faena.
+{ crontab -l 2>/dev/null | grep -v renovar-certificado || true
+  echo "17 3 * * 1 /usr/local/bin/renovar-certificado >> /var/log/certbot.log 2>&1"; } | crontab -
 
 echo "▶ Respaldo diario de la base…"
 cat > /usr/local/bin/respaldar-monitoreo <<EOF
@@ -188,7 +198,9 @@ docker compose exec -T db pg_dump -U "\${POSTGRES_USER:-monitoreo}" "\${POSTGRES
 find respaldos -name 'monitoreo-*.sql.gz' -mtime +14 -delete
 EOF
 chmod +x /usr/local/bin/respaldar-monitoreo
-(crontab -l 2>/dev/null | grep -v respaldar-monitoreo; echo "23 2 * * * /usr/local/bin/respaldar-monitoreo >> /var/log/respaldo-monitoreo.log 2>&1") | crontab -
+# Mismo caso que arriba: sin el || true esto tumba el script en un droplet nuevo.
+{ crontab -l 2>/dev/null | grep -v respaldar-monitoreo || true
+  echo "23 2 * * * /usr/local/bin/respaldar-monitoreo >> /var/log/respaldo-monitoreo.log 2>&1"; } | crontab -
 
 cat <<FIN
 
