@@ -76,7 +76,10 @@ async function salir() {
 </script>
 
 <template>
-  <div class="app">
+  <!-- Sin sesión no hay barra lateral ni cabecera y el login pinta la ventana
+       completa; la clase le quita el relleno al contenedor para que el
+       degradado llegue hasta los bordes. -->
+  <div class="app" :class="{ 'sin-sesion': !conSesion }">
     <aside v-if="conSesion" class="lateral">
       <div class="marca">
         <div class="logotipo">N</div>

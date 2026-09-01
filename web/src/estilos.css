@@ -11,6 +11,12 @@
   --marca-tenue:  #eef2fa;
   --acento:       #f0b429;
 
+  /* Los dos colores del logotipo del cliente. Se usan sólo donde aparece su
+     marca —la pantalla de entrada—; el resto del portal sigue en el azul de
+     Nexori para no confundir de quién es el software.                      */
+  --azteca-rojo:  #d61f26;
+  --azteca-oro:   #f4c81e;
+
   --fondo:  #eef1f7;
   --panel:  #ffffff;
   --borde:  #e1e7f0;
@@ -56,6 +62,10 @@ body {
 
 .contenido { flex: 1; padding: 26px 30px 40px; }
 .ancho { max-width: 1560px; margin: 0 auto; }
+
+/* La pantalla de entrada va a sangre: sin relleno y sin ancho máximo. */
+.app.sin-sesion .contenido { padding: 0; }
+.app.sin-sesion .ancho { max-width: none; }
 
 /* ── Barra lateral ────────────────────────────────────────────────────── */
 .lateral {
@@ -345,19 +355,85 @@ input::placeholder { color: #9aa8bd; }
 .tenue-txt { color: var(--tenue); font-size: 12px; }
 
 /* ── Acceso ───────────────────────────────────────────────────────────── */
+/* ── Entrada ──────────────────────────────────────────────────────────────
+   Ocupa la ventana entera: en el login no hay barra lateral ni cabecera, y
+   la clase .sin-sesion de App.vue le quita el relleno al contenedor para que el
+   degradado llegue a los bordes. Dos columnas: la del cliente (su logo, en
+   oscuro, que es donde su amarillo se lee) y la del formulario, en claro.  */
 .login {
   display: flex; align-items: center; justify-content: center;
-  min-height: calc(100vh - 66px); width: 100%;
+  min-height: 100vh; width: 100%; padding: 24px;
+  background:
+    radial-gradient(900px 520px at 12% 18%, rgba(214, 31, 38, .16), transparent 62%),
+    radial-gradient(760px 460px at 88% 88%, rgba(244, 200, 30, .13), transparent 60%),
+    linear-gradient(150deg, #16294a 0%, var(--marca-honda) 52%, #0a1526 100%);
 }
-.login form {
-  background: var(--panel); padding: 32px 34px;
-  border-radius: 14px; border: 1px solid var(--borde);
-  box-shadow: var(--sombra2); width: 350px;
+
+.login .marco {
+  display: grid; grid-template-columns: 1.02fr 1fr;
+  width: 100%; max-width: 880px;
+  border-radius: 18px; overflow: hidden;
+  box-shadow: 0 28px 70px -18px rgba(0, 0, 0, .55), 0 2px 8px rgba(0, 0, 0, .2);
 }
-.login h1 { margin: 0 0 3px; font-size: 20px; font-weight: 650; color: var(--marca); }
-.login p { margin: 0 0 24px; font-size: 12px; color: var(--tenue); }
-.login input { width: 100%; margin-bottom: 12px; padding: 10px 12px; }
-.login button { width: 100%; padding: 11px; justify-content: center; font-size: 14px; }
+
+/* Columna del cliente */
+.login .sello {
+  padding: 44px 40px;
+  display: flex; flex-direction: column; align-items: flex-start;
+  color: #dbe4f4;
+  background:
+    radial-gradient(560px 340px at 24% 6%, rgba(244, 200, 30, .12), transparent 66%),
+    linear-gradient(165deg, #1d3358 0%, #132444 58%, #0e1c35 100%);
+}
+.login .sello img {
+  width: 148px; height: 148px; margin: -6px 0 20px -8px;
+  filter: drop-shadow(0 6px 18px rgba(0, 0, 0, .45));
+}
+.login .sello h1 {
+  margin: 0; font-size: 25px; font-weight: 650; letter-spacing: -.02em; color: #fff;
+}
+.login .razon { margin: 5px 0 0; font-size: 13px; color: #9fb2d2; }
+.login .sello hr {
+  width: 54px; height: 3px; margin: 22px 0 20px;
+  border: 0; border-radius: 2px;
+  background: linear-gradient(90deg, var(--azteca-oro), var(--azteca-rojo));
+}
+.login .sello ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 13px; }
+.login .sello li { display: flex; gap: 11px; align-items: flex-start; font-size: 13px; line-height: 1.45; }
+.login .sello li svg { width: 17px; height: 17px; flex: none; margin-top: 1px; color: var(--azteca-oro); }
+
+/* Columna del formulario */
+.login .acceso { background: var(--panel); padding: 48px 44px; display: flex; align-items: center; }
+.login .acceso form { width: 100%; }
+.login .acceso h2 { margin: 0; font-size: 20px; font-weight: 650; color: var(--marca); }
+.login .pie-h2 { margin: 4px 0 26px; font-size: 12.5px; color: var(--tenue); }
+.login label {
+  display: block; margin-bottom: 6px;
+  font-size: 12px; font-weight: 600; color: var(--texto2);
+}
+.login input { width: 100%; margin-bottom: 16px; padding: 11px 13px; }
+.login button {
+  width: 100%; padding: 12px; justify-content: center;
+  font-size: 14px; font-weight: 600; margin-top: 6px;
+}
+.login .error { margin-bottom: 16px; }
+.login .firma {
+  margin: 26px 0 0; padding-top: 16px; border-top: 1px solid var(--linea);
+  font-size: 11.5px; color: var(--tenue); text-align: center;
+}
+
+/* Debajo de esto ya no caben dos columnas. La del cliente se vuelve una
+   cabecera compacta: se queda el logo y el nombre, se van los puntos.      */
+@media (max-width: 800px) {
+  .login { padding: 0; }
+  .login .marco { grid-template-columns: 1fr; max-width: 460px; border-radius: 16px; }
+  .login .sello { padding: 30px 32px 26px; align-items: center; text-align: center; }
+  .login .sello img { width: 104px; height: 104px; margin: 0 0 14px; }
+  .login .sello h1 { font-size: 21px; }
+  .login .sello hr { margin: 16px auto 0; }
+  .login .sello ul { display: none; }
+  .login .acceso { padding: 32px 32px 34px; }
+}
 
 /* ── Pantallas angostas: el menú se queda sólo con los iconos ─────────── */
 @media (max-width: 1000px) {
