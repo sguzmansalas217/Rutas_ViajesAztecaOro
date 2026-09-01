@@ -357,6 +357,8 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
     sinUnidad: [],
     multiples: [],
     ignoradas: [],
+    reemplazadas: 0,        // filas que este archivo dejó fuera (cambio del cliente)
+    marcajesCancelados: 0,  // marcajes de esas filas que aún no salían
     fusionPrefijoV: fusionarV,
     // Resumen de la pestaña TELEFONOS. Queda en null si el archivo no la trae:
     // así se distingue 'el cliente no mandó la hoja' de 'la mandó vacía'.
@@ -391,6 +393,9 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
     );
     const cargaId = carga.rows[0].id;
     const memo = { vehiculos: new Map(), conductores: new Map(), rutas: new Map() };
+    // Los id de asignación que trae este archivo. Al final, lo que exista en
+    // las mismas fechas y no esté en este conjunto se da por reemplazado.
+    const vigentes = new Set();
     let minFecha = null;
     let maxFecha = null;
 
@@ -494,7 +499,7 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
             else if (estado === 'por_resolver') reporte.pendientes++;
             else if (estado === 'fuera_contrato') reporte.fueraContrato++;
 
-            await cliente.query(
+            const guardada = await cliente.query(
               `INSERT INTO asignacion
                  (carga_id, fecha, ruta_id, vehiculo_id, conductor_id, texto_origen, hoja, celda, estado)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -502,10 +507,16 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
                  SET carga_id     = EXCLUDED.carga_id,
                      vehiculo_id  = EXCLUDED.vehiculo_id,
                      conductor_id = EXCLUDED.conductor_id,
-                     estado       = EXCLUDED.estado`,
+                     hoja         = EXCLUDED.hoja,
+                     celda        = EXCLUDED.celda,
+                     estado       = EXCLUDED.estado
+               RETURNING id`,
               [cargaId, fecha, rutaId, vehiculo?.id ?? null, conductor.id, parte, hoja.name,
                `${colLetra(col)}${nf}`, estado],
             );
+            // Se anota qué filas trae ESTE archivo. Lo que quede de las mismas
+            // fechas y no esté aquí es algo que el cliente quitó o cambió.
+            vigentes.add(guardada.rows[0].id);
             enHoja++;
           }
         }
@@ -579,6 +590,46 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
       );
       reporte.resueltas += rescatadas;
       reporte.pendientes -= rescatadas;
+    }
+
+    // ── Lo que el cliente quitó o cambió ─────────────────────────────────────
+    //  El archivo se carga todos los días. Las celdas que no cambiaron ya se
+    //  actualizaron en su sitio (misma fila, mismos marcajes: la llave UNIQUE
+    //  de asignación se encarga). Pero cuando el cliente CAMBIA un conductor,
+    //  el texto de la celda cambia y la llave ya no casa: entra una fila nueva
+    //  y la vieja se quedaba viva y programada. El conductor que ya no maneja
+    //  esa ruta seguía recibiendo el WhatsApp y se pagaba la plantilla.
+    //
+    //  Aquí se retira lo que ya no viene en el archivo, acotado a las fechas
+    //  que este archivo cubre: subir la semana que entra no toca la anterior.
+    // La guarda del leidas > 0 no sobra: si el archivo llegara vacío o con las
+    // hojas ilegibles, sin ella se daría de baja la semana entera de un golpe.
+    if (minFecha && maxFecha && reporte.leidas > 0) {
+      const { rowCount: retiradas } = await cliente.query(
+        `UPDATE asignacion
+            SET estado = 'reemplazada', carga_id = $1
+          WHERE fecha BETWEEN $2 AND $3
+            AND estado <> 'reemplazada'
+            AND NOT (id = ANY($4::bigint[]))`,
+        [cargaId, minFecha, maxFecha, [...vigentes]],
+      );
+      reporte.reemplazadas = retiradas;
+
+      // Los marcajes que todavía no salían se cancelan. Los ya enviados o
+      // respondidos NO se tocan: son la evidencia de lo que sí ocurrió antes
+      // del cambio, y esa historia no se reescribe.
+      const { rowCount: cancelados } = await cliente.query(
+        `UPDATE marcaje m
+            SET estado = 'cancelado'
+           FROM asignacion a
+          WHERE a.id = m.asignacion_id
+            AND a.carga_id = $1
+            AND a.estado = 'reemplazada'
+            AND m.estado = 'pendiente'
+            AND m.enviado_en IS NULL`,
+        [cargaId],
+      );
+      reporte.marcajesCancelados = cancelados;
     }
 
     await cliente.query(

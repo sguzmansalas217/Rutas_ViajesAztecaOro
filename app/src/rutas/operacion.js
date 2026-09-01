@@ -15,7 +15,12 @@ export default async function operacion(app) {
               count(*) FILTER (WHERE estado = 'por_resolver')::int       AS por_resolver,
               count(*) FILTER (WHERE estado IN ('cancelada','vacaciones','descanso'))::int AS sin_operar,
               count(DISTINCT vehiculo_id)::int                           AS unidades
-         FROM asignacion WHERE fecha = $1`,
+         FROM asignacion
+        WHERE fecha = $1
+          -- 'reemplazada' es lo que una carga posterior dejó fuera. Sigue en
+          -- la tabla como evidencia, pero contarla inflaría el tablero con
+          -- filas que ya no existen en el Excel del cliente.
+          AND estado <> 'reemplazada'`,
       [fecha],
     );
 
@@ -28,7 +33,7 @@ export default async function operacion(app) {
                                AND programado_para < now())::int   AS pendientes
          FROM marcaje m
          JOIN asignacion a ON a.id = m.asignacion_id
-        WHERE a.fecha = $1`,
+        WHERE a.fecha = $1 AND a.estado <> 'reemplazada'`,
       [fecha],
     );
 
@@ -51,7 +56,8 @@ export default async function operacion(app) {
          JOIN ruta r ON r.id = a.ruta_id
          LEFT JOIN vehiculo v  ON v.id = a.vehiculo_id
          LEFT JOIN conductor c ON c.id = a.conductor_id
-        WHERE a.fecha = $1 AND ($2 = '' OR r.turno = $2)
+        WHERE a.fecha = $1 AND a.estado <> 'reemplazada'
+          AND ($2 = '' OR r.turno = $2)
         ORDER BY r.hora_monitoreo, r.nombre`,
       [fecha, String(req.query.turno ?? '')],
     );
@@ -115,7 +121,8 @@ export default async function operacion(app) {
          JOIN ruta r       ON r.id = a.ruta_id
          LEFT JOIN conductor c ON c.id = a.conductor_id
          LEFT JOIN vehiculo  v ON v.id = a.vehiculo_id
-        WHERE a.fecha = $1 AND ($2 = '' OR m.semaforo = $2)
+        WHERE a.fecha = $1 AND a.estado <> 'reemplazada'
+          AND ($2 = '' OR m.semaforo = $2)
         ORDER BY m.programado_para, m.numero`,
       [fecha, String(req.query.semaforo ?? '')],
     );

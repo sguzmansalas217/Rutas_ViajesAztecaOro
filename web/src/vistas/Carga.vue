@@ -48,8 +48,9 @@ onMounted(cargarHistorial);
 <template>
   <h2>Cargar Excel</h2>
   <p class="sub">
-    El archivo semanal tal cual lo manda el cliente (FVA-MON-01). No hay que modificarlo:
-    subirlo dos veces no duplica nada.
+    El archivo semanal tal cual lo manda el cliente (FVA-MON-01). No hay que modificarlo.
+    Se puede subir todos los días: lo que no cambió sigue su curso con sus marcajes,
+    y lo que el cliente cambió se actualiza y da de baja lo anterior.
   </p>
 
   <div v-if="error" class="error">{{ error }}</div>
@@ -79,6 +80,17 @@ onMounted(cargarHistorial);
     </div>
     <div v-if="pendientesTel.length" class="aviso">
       <div v-for="(t, i) in pendientesTel" :key="i">{{ t }}</div>
+    </div>
+    <!-- Los cambios del día. Se avisa aunque sea uno solo: es la diferencia
+         entre que el conductor correcto reciba el WhatsApp o que lo reciba el
+         que ya no maneja esa ruta. -->
+    <div v-if="reporte.reemplazadas" class="aviso">
+      {{ reporte.reemplazadas }} asignación(es) de esta semana ya no vienen en el archivo
+      —el cliente las cambió— y se dieron de baja.
+      <template v-if="reporte.marcajesCancelados">
+        Se cancelaron {{ reporte.marcajesCancelados }} marcajes que aún no salían;
+        los ya enviados se conservan.
+      </template>
     </div>
 
     <div class="tarjetas">
