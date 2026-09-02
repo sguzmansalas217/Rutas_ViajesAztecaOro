@@ -31,7 +31,10 @@ async function pedir(metodo, ruta, cuerpo, opciones = {}) {
   // sistema se mueve de sitio, esto lo sigue solo.
   const r = await fetch(`${import.meta.env.BASE_URL}api${ruta}`, { method: metodo, headers: cabeceras, body, credentials: 'include', ...opciones });
 
-  if (r.status === 401) {
+  // El 401 del propio login no es una sesión vencida: es una contraseña que no
+  // coincide, y la API ya manda ese texto. Sin la excepción, quien se equivoca
+  // al teclear lee "Sesión expirada" y se queda buscando qué sesión.
+  if (r.status === 401 && ruta !== '/auth/login') {
     fijarToken(null);
     if (!location.hash.includes('login')) location.hash = '#/login';
     throw new Error('Sesión expirada');
