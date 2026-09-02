@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { filas, unaFila, consultar, auditar, parametros, fijarParametro } from '../db.js';
 import { aE164, normalizar } from '../dominio/normalizar.js';
+import { esProveedor } from '../dominio/proveedor.js';
 import {
   estadoContrato, listarVehiculos, fijarContratado,
   proponerContratados, resincronizarAsignaciones,
@@ -219,11 +220,23 @@ export default async function catalogos(app) {
     ));
 
   // ── Parámetros (precios, tarifas, umbrales) ───────────────────────────────
-  app.get('/parametros', async () => parametros());
+  // Los 'precio.*' son lo que el cliente paga y los ve cualquiera: es su
+  // contrato. Los 'tarifa.*' son lo que el servicio cuesta —lo de Meta, el
+  // tipo de cambio— y ésos sólo el proveedor; con los dos juntos se saca el
+  // margen con una resta. Se filtra aquí y no en la vista: la vista no es
+  // una barrera, quien tenga sesión puede pegarle a la ruta a mano.
+  app.get('/parametros', async (req) => {
+    const todos = await parametros();
+    if (esProveedor(req)) return todos;
+    return Object.fromEntries(Object.entries(todos).filter(([c]) => !c.startsWith('tarifa.')));
+  });
 
   app.put('/parametros/:clave', { preHandler: [app.exigirRol('admin')] }, async (req, reply) => {
     if (!Object.hasOwn(req.body ?? {}, 'valor')) {
       return reply.code(400).send({ error: 'Falta el valor' });
+    }
+    if (req.params.clave.startsWith('tarifa.') && !esProveedor(req)) {
+      return reply.code(403).send({ error: 'Sin permisos para esta operación' });
     }
     // Cambiar precio.* es ejercer la Cláusula Cuarta: queda en bitácora.
     await fijarParametro(req.params.clave, req.body.valor);

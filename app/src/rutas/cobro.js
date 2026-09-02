@@ -33,11 +33,13 @@ export default async function cobro(app) {
     return c;
   });
 
-  // Sólo admin: aquí se ve cuánto le estamos pagando a Meta.
-  app.get('/margen', { preHandler: [app.exigirRol('admin')] }, async (req) =>
+  // Estas dos NO son de 'admin', son del proveedor: enseñan lo que le pagamos
+  // a Meta y el margen del servicio. El administrador del cliente no las ve
+  // —la vista de Cobro se pinta igual, nada más sin ese bloque—.
+  app.get('/margen', { preHandler: [app.exigirProveedor] }, async (req) =>
     margenPeriodo(req.query.periodo ?? periodoDe()));
 
-  app.get('/mensajes', { preHandler: [app.exigirRol('admin')] }, async (req) => {
+  app.get('/mensajes', { preHandler: [app.exigirProveedor] }, async (req) => {
     const periodo = req.query.periodo ?? periodoDe();
     return filas(
       `SELECT date_trunc('day', enviado_en)::date AS dia,

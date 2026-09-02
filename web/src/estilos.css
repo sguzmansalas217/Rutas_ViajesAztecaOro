@@ -476,6 +476,41 @@ input::placeholder { color: #9aa8bd; }
 .cuenta form .tenue-txt { margin: -9px 0 14px; }
 .cuenta button { width: 100%; justify-content: center; padding: 11px; margin-top: 4px; }
 
+/* ── Usuarios ─────────────────────────────────────────────────────────── */
+/* Sin max-width: debajo va la tabla, que ocupa todo el ancho, y las dos
+   cajas tienen que terminar en la misma línea o se ve chueco. */
+.caja.alta { margin-bottom: 22px; }
+.caja.alta .campos {
+  display: grid; gap: 14px 18px;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  margin-bottom: 10px;
+}
+.caja.alta label {
+  display: block; margin-bottom: 6px;
+  font-size: 12px; font-weight: 600; color: var(--texto2);
+}
+.caja.alta input, .caja.alta select { width: 100%; padding: 9px 11px; }
+/* El campo y su botón "Generar" en el mismo renglón, sin que el botón
+   encoja: la contraseña inventada mide 14 y necesita el ancho. */
+.caja.alta .con-boton { display: flex; gap: 8px; }
+.caja.alta .con-boton button { flex: none; }
+.caja.alta > form > button { margin-top: 12px; }
+
+/* La contraseña recién inventada: monoespaciada y seleccionable de un
+   golpe, que de ahí se copia y no hay segunda oportunidad. */
+.clave {
+  display: inline-block; margin: 0 2px;
+  padding: 3px 9px; border-radius: 6px;
+  background: rgba(0, 0, 0, .07); border: 1px solid rgba(0, 0, 0, .1);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 14px; font-weight: 700; letter-spacing: .5px;
+  user-select: all;
+}
+
+tr.apagado td { opacity: .55; }
+td.acciones { white-space: nowrap; text-align: right; }
+td.acciones button { padding: 5px 10px; font-size: 12px; margin-left: 6px; }
+
 /* ── Pantallas angostas: el menú se queda sólo con los iconos ─────────── */
 @media (max-width: 1000px) {
   .lateral { width: 62px; }

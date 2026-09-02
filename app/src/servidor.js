@@ -12,6 +12,7 @@ import rateLimit from '@fastify/rate-limit';
 import multipart from '@fastify/multipart';
 
 import { config } from './config.js';
+import { esProveedor } from './dominio/proveedor.js';
 import { log } from './log.js';
 import { pool } from './db.js';
 import { migrar } from './migrar.js';
@@ -65,6 +66,19 @@ export async function construirServidor() {
       return reply.code(401).send({ error: 'No autenticado' });
     }
     if (!roles.includes(req.user.rol)) {
+      return reply.code(403).send({ error: 'Sin permisos para esta operación' });
+    }
+  });
+
+  // Hay cosas que no son de 'admin', son del proveedor. El porqué está en
+  // dominio/proveedor.js.
+  app.decorate('exigirProveedor', async (req, reply) => {
+    try {
+      await req.jwtVerify();
+    } catch {
+      return reply.code(401).send({ error: 'No autenticado' });
+    }
+    if (!esProveedor(req)) {
       return reply.code(403).send({ error: 'Sin permisos para esta operación' });
     }
   });

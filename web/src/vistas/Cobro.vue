@@ -16,7 +16,9 @@ async function cargar() {
   try {
     calculo.value = await api.get(`/cobro/periodo?periodo=${periodo.value}`);
   } catch (e) { error.value = e.message; }
-  // El margen es sólo para admin: si es operador, simplemente no se pinta.
+  // El margen es sólo del proveedor —enseña lo que cuesta el servicio, no lo
+  // que se cobra—. Al administrador del cliente el API le contesta 403 y aquí
+  // el bloque simplemente no se pinta; el resto de la pantalla va igual.
   try { margen.value = await api.get(`/cobro/margen?periodo=${periodo.value}`); } catch { margen.value = null; }
 }
 
