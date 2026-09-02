@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { api } from '../api.js';
+import { puedeEditar } from '../sesion.js';
 
 const lista = ref([]);
 const buscar = ref('');
@@ -59,11 +60,13 @@ onMounted(cargar);
         <td class="tenue-txt">{{ c.como_aparece }}</td>
         <td>
           <input
+            v-if="puedeEditar"
             :value="c.telefono_e164 ? c.telefono_e164.slice(3) : ''"
             placeholder="10 dígitos"
             style="width:130px"
             @change="guardar(c, $event.target.value)"
           />
+          <span v-else class="tenue-txt">{{ c.telefono_e164 ?? '—' }}</span>
         </td>
         <td>
           <span v-if="c.telefono_e164" class="chip verde">listo</span>

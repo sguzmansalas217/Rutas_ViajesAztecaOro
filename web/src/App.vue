@@ -2,6 +2,7 @@
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api, fijarToken, hayToken } from './api.js';
+import { usuario, cargarSesion, olvidarSesion } from './sesion.js';
 
 const ruta = useRoute();
 const router = useRouter();
@@ -23,21 +24,20 @@ const MENU = [
     grupo: 'Administración',
     items: [
       { a: '/unidades', texto: 'Unidades', d: ['M1 3h15v13H1z', 'M16 8h4l3 3v5h-7z', 'M5.5 21a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z', 'M18.5 21a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z'] },
-      { a: '/carga', texto: 'Cargar Excel', d: ['M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4', 'M17 8l-5-5-5 5', 'M12 3v12'] },
-      { a: '/cobro', texto: 'Cobro', soloAdmin: true, d: ['M12 1v22', 'M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6'] },
-      { a: '/usuarios', texto: 'Usuarios', soloAdmin: true, d: ['M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2', 'M9 3.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8z', 'M19 8v6', 'M22 11h-6'] },
+      { a: '/carga', texto: 'Cargar Excel', roles: ['admin', 'operador'], d: ['M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4', 'M17 8l-5-5-5 5', 'M12 3v12'] },
+      { a: '/cobro', texto: 'Cobro', roles: ['admin'], d: ['M12 1v22', 'M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6'] },
+      { a: '/usuarios', texto: 'Usuarios', roles: ['admin'], d: ['M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2', 'M9 3.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8z', 'M19 8v6', 'M22 11h-6'] },
     ],
   },
 ];
 
-const usuario = ref(null);
 const contrato = ref(null);
 
-// Cobro y Usuarios pegan contra rutas que sólo abren para admin, así que a
-// quien no lo es ni se le enseñan: le darían 403 en cada tarjeta. El API es el
-// que manda; esto sólo evita el renglón inútil.
+// Los renglones que piden rol se le esconden a quien no lo tiene: le darían 403
+// al entrar. El API es el que manda —y el guardia del router tampoco los deja
+// abrir a mano—; esto sólo evita ofrecer lo que no se puede.
 const menu = computed(() => MENU
-  .map((g) => ({ ...g, items: g.items.filter((i) => !i.soloAdmin || usuario.value?.rol === 'admin') }))
+  .map((g) => ({ ...g, items: g.items.filter((i) => !i.roles || i.roles.includes(usuario.value?.rol)) }))
   .filter((g) => g.items.length > 0));
 
 const reloj = ref('');
@@ -56,9 +56,8 @@ function marcarHora() {
 }
 
 async function cargarContexto() {
-  if (!hayToken()) { usuario.value = null; contrato.value = null; return; }
-  // /auth/yo responde { usuario: {...} }, no el usuario pelón.
-  try { usuario.value = (await api.get('/auth/yo')).usuario; } catch { /* la vista ya avisa */ }
+  if (!hayToken()) { olvidarSesion(); contrato.value = null; return; }
+  await cargarSesion();
   try { contrato.value = await api.get('/catalogos/contrato'); } catch { contrato.value = null; }
 }
 
@@ -79,7 +78,7 @@ onUnmounted(() => clearInterval(tic));
 async function salir() {
   try { await api.post('/auth/salir'); } catch { /* da igual */ }
   fijarToken(null);
-  usuario.value = null;
+  olvidarSesion();
   router.push('/login');
 }
 </script>

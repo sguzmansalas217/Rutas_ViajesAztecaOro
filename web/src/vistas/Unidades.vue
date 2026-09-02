@@ -4,6 +4,7 @@
 // se facturan.
 import { ref, onMounted, computed } from 'vue';
 import { api } from '../api.js';
+import { puedeEditar } from '../sesion.js';
 
 const datos = ref(null);
 const error = ref('');
@@ -73,7 +74,7 @@ onMounted(cargar);
   <div v-if="datos && datos.libres > 0" class="aviso amarillo">
     Quedan <strong>{{ datos.libres }}</strong> lugares sin asignar. Mientras estén vacíos
     esas unidades no se monitorean.
-    <button class="tenue" style="margin-left:8px" @click="proponer">
+    <button v-if="puedeEditar" class="tenue" style="margin-left:8px" @click="proponer">
       Llenar con las que más trabajan
     </button>
   </div>
@@ -90,7 +91,7 @@ onMounted(cargar);
     <thead>
       <tr>
         <th>Unidad</th><th>En el contrato</th><th>Asignaciones</th>
-        <th>Rutas</th><th>Conductores</th><th>Último día</th><th></th>
+        <th>Rutas</th><th>Conductores</th><th>Último día</th><th v-if="puedeEditar"></th>
       </tr>
     </thead>
     <tbody>
@@ -107,13 +108,13 @@ onMounted(cargar);
         </td>
         <td>{{ v.conductores }}</td>
         <td class="tenue-txt">{{ v.ultimo_dia ?? '—' }}</td>
-        <td>
+        <td v-if="puedeEditar">
           <button class="tenue" :disabled="guardando === v.id" @click="alternar(v)">
             {{ v.contratado ? 'Quitar' : 'Agregar' }}
           </button>
         </td>
       </tr>
-      <tr v-if="!lista.length"><td colspan="7" class="tenue-txt">Sin resultados.</td></tr>
+      <tr v-if="!lista.length"><td :colspan="puedeEditar ? 7 : 6" class="tenue-txt">Sin resultados.</td></tr>
     </tbody>
   </table>
 </template>

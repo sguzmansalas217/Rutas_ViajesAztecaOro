@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { api } from '../api.js';
+import { puedeEditar } from '../sesion.js';
 
 // Esta pantalla es la razón por la que el cliente no tiene que tocar su Excel:
 // lo que el importador no pudo interpretar aterriza aquí y se arregla en segundos.
@@ -50,7 +51,7 @@ onMounted(cargar);
     <thead>
       <tr>
         <th>Fecha</th><th>Turno / Ruta</th><th>Celda</th><th>Texto del Excel</th>
-        <th>Motivo</th><th>Teléfono</th><th></th>
+        <th>Motivo</th><th>Teléfono</th><th v-if="puedeEditar"></th>
       </tr>
     </thead>
     <tbody>
@@ -62,14 +63,14 @@ onMounted(cargar);
         <td><span class="chip amarillo">{{ f.motivo }}</span></td>
         <td>
           <input
-            v-if="f.conductor_id && !f.telefono_e164"
+            v-if="puedeEditar && f.conductor_id && !f.telefono_e164"
             placeholder="10 dígitos"
             style="width:120px"
             @change="guardarTelefono(f, $event.target.value)"
           />
           <span v-else class="tenue-txt">{{ f.telefono_e164 ?? '—' }}</span>
         </td>
-        <td>
+        <td v-if="puedeEditar">
           <button class="tenue" @click="marcar(f, 'cancelada')">No opera</button>
         </td>
       </tr>
