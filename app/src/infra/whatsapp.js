@@ -155,14 +155,31 @@ export async function pedirUbicacion({ conductorId, telefono, texto, marcajeId }
   return { canal: 'libre', waId: r?.messages?.[0]?.id ?? null, costoUsd: 0 };
 }
 
-/** Aviso a un encargado o al operador. Va al número que traiga configurado. */
+/**
+ * Aviso a un encargado o al operador. Va al número que traiga configurado.
+ *
+ * ⚠️ Sale como texto libre, así que Meta sólo lo entrega si ESE número escribió
+ * al número del sistema en las últimas 24 h. Un encargado nunca escribe, así
+ * que en la práctica el aviso deja de llegar al día siguiente y nadie se
+ * entera: por eso devuelve el resultado en vez de tragárselo. Quien llama
+ * decide qué hacer —el trabajador lo registra en el log, la pantalla de
+ * Alertas se lo enseña al administrador—.
+ *
+ * @returns {Promise<{ok: boolean, waId?: string|null, error?: string, codigo?: number|null}>}
+ */
 export async function enviarAviso(telefono, texto) {
-  if (!telefono) return;
+  if (!telefono) return { ok: false, error: 'No hay número configurado' };
   try {
-    await llamarMeta({
+    const r = await llamarMeta({
       messaging_product: 'whatsapp', to: telefono, type: 'text', text: { body: texto },
     });
+    return { ok: true, waId: r?.messages?.[0]?.id ?? null };
   } catch (e) {
-    log.error({ err: e }, 'no se pudo enviar el aviso al encargado');
+    log.error({ err: e, telefono }, 'no se pudo enviar el aviso al encargado');
+    return {
+      ok: false,
+      error: e.message,
+      codigo: e.detalleMeta?.error?.code ?? null,
+    };
   }
 }

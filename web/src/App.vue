@@ -25,6 +25,7 @@ const MENU = [
     items: [
       { a: '/unidades', texto: 'Unidades', d: ['M1 3h15v13H1z', 'M16 8h4l3 3v5h-7z', 'M5.5 21a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z', 'M18.5 21a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z'] },
       { a: '/carga', texto: 'Cargar Excel', roles: ['admin', 'operador'], d: ['M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4', 'M17 8l-5-5-5 5', 'M12 3v12'] },
+      { a: '/alertas', texto: 'Alertas', roles: ['admin'], d: ['M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9', 'M13.7 21a2 2 0 0 1-3.4 0'] },
       { a: '/cobro', texto: 'Cobro', roles: ['admin'], d: ['M12 1v22', 'M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6'] },
       { a: '/usuarios', texto: 'Usuarios', roles: ['admin'], d: ['M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2', 'M9 3.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8z', 'M19 8v6', 'M22 11h-6'] },
     ],

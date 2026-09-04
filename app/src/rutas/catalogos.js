@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { filas, unaFila, consultar, auditar, parametros, fijarParametro } from '../db.js';
 import { aE164, normalizar } from '../dominio/normalizar.js';
 import { esProveedor } from '../dominio/proveedor.js';
+import { enviarAviso } from '../infra/whatsapp.js';
 import {
   estadoContrato, listarVehiculos, fijarContratado,
   proponerContratados, resincronizarAsignaciones,
@@ -245,5 +246,40 @@ export default async function catalogos(app) {
       detalle: { clave: req.params.clave, valor: req.body.valor }, ip: req.ip,
     });
     return { ok: true };
+  });
+
+  // ── Prueba del aviso ──────────────────────────────────────────────────────
+  // El aviso de rojo se manda como texto libre, y Meta sólo lo entrega si ese
+  // número escribió al del sistema en las últimas 24 h. Un encargado no
+  // escribe nunca, así que el aviso se apaga solo al día siguiente y el error
+  // se queda en el log: se configura el número, se ve que llega, y meses
+  // después nadie sabe que dejó de llegar. Esto es para comprobarlo cuando se
+  // quiera, sin esperar a que haya un rojo de verdad.
+  app.post('/alertas/prueba', { preHandler: [app.exigirRol('admin')] }, async (req, reply) => {
+    const p = await parametros();
+    const telefono = String(p['aviso.encargado_telefono'] ?? '');
+    if (!telefono) return reply.code(400).send({ error: 'No hay número configurado' });
+
+    const r = await enviarAviso(
+      telefono,
+      '🔔 Prueba de alertas · Monitoreo de Rutas.\n\nSi lees esto, los avisos de rojo van a llegar a este número.',
+    );
+    await auditar({
+      usuarioId: req.user.id, accion: 'prueba_alerta', entidad: 'parametro',
+      detalle: { telefono, ok: r.ok, codigo: r.codigo ?? null }, ip: req.ip,
+    });
+
+    if (r.ok) return { ok: true, telefono };
+    return {
+      ok: false,
+      telefono,
+      // 131047 no es una falla del sistema: es la ventana de 24 h cerrada, y
+      // se arregla del lado del encargado. Merece su propia explicación o el
+      // administrador se pone a revisar el token, que está bien.
+      error: r.codigo === 131047
+        ? 'WhatsApp no deja escribirle primero a este número. El encargado tiene que mandar un mensaje —lo que sea— al número del sistema; con eso se abre la ventana de 24 h.'
+        : r.error,
+      codigo: r.codigo ?? null,
+    };
   });
 }

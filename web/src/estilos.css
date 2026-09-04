@@ -420,6 +420,7 @@ input::placeholder { color: #9aa8bd; }
 .aviso a, .ok a, .error a { color: inherit; font-weight: 600; }
 
 .tenue-txt { color: var(--tenue); font-size: 12px; }
+.tenue-txt.mal { color: var(--rojo); }
 
 /* ── Entrada ──────────────────────────────────────────────────────────────
    Ocupa la ventana entera: en el login no hay barra lateral ni cabecera, y

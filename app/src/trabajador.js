@@ -27,6 +27,10 @@ function texto(plantilla, datos) {
   return String(plantilla).replace(/\{(\w+)\}/g, (_, k) => datos[k] ?? '');
 }
 
+// El aviso lo lee un encargado en su celular, no un programador. "marcaje 3"
+// lo obliga a acordarse de cuál es; "filtro" lo dice.
+const NOMBRE_MARCAJE = { 1: 'despertar', 2: 'en camino', 3: 'filtro', 4: 'salida' };
+
 // ── Tic: toma los marcajes vencidos y los encola ────────────────────────────
 async function tic() {
   // Ventana de 15 minutos hacia atrás: si el worker estuvo caído no se dispara
@@ -88,14 +92,30 @@ async function vencerYAlertar() {
   if (!vencidos.length) return;
   log.warn({ n: vencidos.length }, '🔴 marcajes sin respuesta');
 
-  if (telefonoAviso) {
-    const lineas = vencidos
-      .slice(0, 15)
-      .map((v) => `• ${v.conductor ?? '?'} — ${v.ruta} (marcaje ${v.numero})`);
-    const extra = vencidos.length > 15 ? `\n…y ${vencidos.length - 15} más` : '';
-    await enviarAviso(
-      telefonoAviso,
-      `🔴 Sin respuesta (${vencidos.length}):\n${lineas.join('\n')}${extra}`,
+  if (!telefonoAviso) {
+    // Sin número configurado el rojo sólo existe en el Tablero. Se dice en el
+    // log: es la diferencia entre "no hubo rojos" y "hubo y nadie se enteró".
+    log.warn('sin aviso.encargado_telefono: los rojos no se avisan a nadie');
+    return;
+  }
+
+  const lineas = vencidos
+    .slice(0, 15)
+    .map((v) => `• ${v.conductor ?? '?'} — ${v.ruta} (${NOMBRE_MARCAJE[v.numero] ?? `marcaje ${v.numero}`})`);
+  const extra = vencidos.length > 15 ? `\n…y ${vencidos.length - 15} más` : '';
+  const r = await enviarAviso(
+    telefonoAviso,
+    `🔴 Sin respuesta (${vencidos.length}):\n${lineas.join('\n')}${extra}`,
+  );
+  // 131047 es el "re-engagement message" de Meta: la ventana de 24 h de ESE
+  // número está cerrada. No es un problema de red ni del token —es que el
+  // encargado no ha escrito— y se arregla distinto, así que se distingue.
+  if (!r.ok) {
+    log.error(
+      { codigo: r.codigo, telefono: telefonoAviso },
+      r.codigo === 131047
+        ? '🔴 el aviso NO llegó: la ventana de 24 h del encargado está cerrada, tiene que escribirle al número del sistema'
+        : '🔴 el aviso NO llegó al encargado',
     );
   }
 }
