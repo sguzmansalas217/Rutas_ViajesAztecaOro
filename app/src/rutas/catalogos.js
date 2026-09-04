@@ -192,7 +192,21 @@ export default async function catalogos(app) {
   });
 
   // ── Geocercas ─────────────────────────────────────────────────────────────
-  app.get('/geocercas', async () => filas('SELECT * FROM geocerca ORDER BY nombre'));
+  //  Los puntos de filtro. Sin ninguno dada de alta, la ubicación del marcaje 3
+  //  se recibe y se guarda, pero no se compara contra nada: el semáforo sale
+  //  verde por haber contestado a tiempo aunque el conductor esté en su casa.
+  //
+  //  Cada geocerca se cuenta con cuántos marcajes ha validado. Es lo único que
+  //  distingue un punto bien puesto de uno con las coordenadas al revés: si
+  //  lleva semanas en cero, nadie está pasando por ahí y algo está mal.
+  app.get('/geocercas', async () =>
+    filas(
+      `SELECT g.*,
+              (SELECT count(*)::int FROM marcaje m WHERE m.geocerca_id = g.id) AS usos,
+              (SELECT count(*)::int FROM marcaje m
+                WHERE m.geocerca_id = g.id AND m.dentro_geocerca) AS dentro
+         FROM geocerca g ORDER BY g.nombre`,
+    ));
 
   app.post('/geocercas', { preHandler: [editar] }, async (req, reply) => {
     const datos = z.object({
@@ -203,14 +217,55 @@ export default async function catalogos(app) {
     }).safeParse(req.body);
     if (!datos.success) return reply.code(400).send({ error: 'Datos inválidos' });
     const { nombre, latitud, longitud, radioM } = datos.data;
-    return unaFila(
+    const g = await unaFila(
       `INSERT INTO geocerca (nombre, latitud, longitud, radio_m) VALUES ($1, $2, $3, $4)
        ON CONFLICT (nombre) DO UPDATE
          SET latitud = EXCLUDED.latitud, longitud = EXCLUDED.longitud, radio_m = EXCLUDED.radio_m
        RETURNING *`,
       [nombre, latitud, longitud, radioM],
     );
+    await auditar({
+      usuarioId: req.user.id, accion: 'guarda_geocerca', entidad: 'geocerca',
+      entidadId: g.id, detalle: { nombre, latitud, longitud, radioM }, ip: req.ip,
+    });
+    return g;
   });
+
+  // Apagar en vez de borrar: un marcaje ya validado apunta a su geocerca con
+  // una llave foránea, y borrarla dejaría la evidencia de ese día sin el punto
+  // contra el que se midió.
+  app.put('/geocercas/:id', { preHandler: [editar] }, async (req, reply) => {
+    const datos = z.object({ activo: z.boolean() }).safeParse(req.body);
+    if (!datos.success) return reply.code(400).send({ error: 'Datos inválidos' });
+    const g = await unaFila(
+      'UPDATE geocerca SET activo = $2 WHERE id = $1 RETURNING *',
+      [Number(req.params.id), datos.data.activo],
+    );
+    if (!g) return reply.code(404).send({ error: 'No existe esa geocerca' });
+    await auditar({
+      usuarioId: req.user.id, accion: 'activa_geocerca', entidad: 'geocerca',
+      entidadId: g.id, detalle: { activo: datos.data.activo }, ip: req.ip,
+    });
+    return g;
+  });
+
+  //  De dónde salen las coordenadas buenas. Teclearlas de Google Maps es
+  //  adivinar dónde se para de verdad el conductor; las que ya mandaron los
+  //  conductores son el punto real, medido en el lugar. Se listan las del
+  //  marcaje 3 para poder convertir una en geocerca de un clic.
+  app.get('/geocercas/recibidas', async () =>
+    filas(
+      `SELECT m.id, m.latitud, m.longitud, m.respondido_en,
+              m.distancia_m, m.dentro_geocerca,
+              r.nombre AS ruta, r.parada_inicial, c.nombre AS conductor
+         FROM marcaje m
+         JOIN asignacion a ON a.id = m.asignacion_id
+         JOIN ruta r       ON r.id = a.ruta_id
+         LEFT JOIN conductor c ON c.id = a.conductor_id
+        WHERE m.numero = 3 AND m.latitud IS NOT NULL
+        ORDER BY m.respondido_en DESC NULLS LAST
+        LIMIT 40`,
+    ));
 
   // ── Rutas ─────────────────────────────────────────────────────────────────
   app.get('/rutas', async (req) =>
