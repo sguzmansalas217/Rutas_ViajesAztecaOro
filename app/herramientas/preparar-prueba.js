@@ -140,7 +140,7 @@ console.log(`\nRuta: "${nombreRuta}" (${nombreHoja} fila ${filaRuta}) a las ${ho
 console.log(`Hoy la maneja: ${quienHoy ?? '— la celda de hoy está vacía, no se va a programar —'}`);
 console.log(`\nLos cuatro marcajes saldrían a las:`);
 console.log(`   1 despertar   ${mas(0)}`);
-console.log(`   2 en camino   ${mas(10)}`);
+console.log(`   2 revisión    ${mas(10)}`);
 console.log(`   3 filtro      ${mas(20)}`);
 console.log(`   4 salida      ${mas(40)}`);
 console.log(`\nSúbelo en el portal y pon el tablero en la fecha de hoy.`);

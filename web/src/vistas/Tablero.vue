@@ -20,7 +20,7 @@ const TURNOS = ['MANANA', 'TARDE', 'NOCHE', 'ENTRADA_TA', 'ENTRADA_TB'];
 // mismo. 'que' se usa en las descripciones: es lo que falta que haga.
 const MARCAJES = [
   { n: 1, icono: '☀️', nombre: 'Despertar', que: 'confirmar que ya despertó' },
-  { n: 2, icono: '🚌', nombre: 'En camino',  que: 'confirmar que va rumbo a la unidad' },
+  { n: 2, icono: '🔧', nombre: 'Revisión',  que: 'confirmar que la unidad está en buenas condiciones' },
   { n: 3, icono: '📍', nombre: 'Filtro',     que: 'compartir su ubicación en el filtro' },
   { n: 4, icono: '🛣️', nombre: 'Salida',     que: 'confirmar que ya salió con la ruta' },
 ];

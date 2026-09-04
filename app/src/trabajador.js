@@ -29,7 +29,7 @@ function texto(plantilla, datos) {
 
 // El aviso lo lee un encargado en su celular, no un programador. "marcaje 3"
 // lo obliga a acordarse de cuál es; "filtro" lo dice.
-const NOMBRE_MARCAJE = { 1: 'despertar', 2: 'en camino', 3: 'filtro', 4: 'salida' };
+const NOMBRE_MARCAJE = { 1: 'despertar', 2: 'revisión', 3: 'filtro', 4: 'salida' };
 
 // ── Tic: toma los marcajes vencidos y los encola ────────────────────────────
 async function tic() {

@@ -6,7 +6,7 @@
 //  para poder ajustarlos sin tocar código cuando la operación lo pida.
 //
 //      1  despertar      hora_monitoreo            (plantilla, abre la ventana)
-//      2  en camino      +10 min                   (libre, gratis)
+//      2  revisión       +10 min                   (libre, gratis)
 //      3  filtro         hora_salida − 20 min      (pide ubicación)
 //      4  salida         hora_salida               (libre, gratis)
 //
