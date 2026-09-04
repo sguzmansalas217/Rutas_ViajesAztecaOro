@@ -1,0 +1,149 @@
+<!doctype html>
+<!--
+  Aviso de privacidad.
+
+  Vive en web/public/ a propósito: Vite copia esa carpeta tal cual a dist/ y el
+  Dockerfile la deja en /usr/share/nginx/html/monitoreo/, así que queda servida
+  como estático, sin login y sin pasar por el API. Eso importa porque Meta
+  rastrea esta URL para publicar la app: si pidiera sesión, la rechaza.
+
+  No se toca sin revisar app/src/infra/whatsapp.js (pedirUbicacion) ni
+  app/src/rutas/webhook.js: lo que aquí se declara tiene que ser exactamente lo
+  que el sistema recaba, ni más ni menos.
+-->
+<html lang="es-MX">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Aviso de Privacidad — Monitoreo de Rutas</title>
+<link rel="icon" href="/monitoreo/favicon.png" />
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 32px 20px 64px;
+    font: 16px/1.65 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1f2937; background: #f7f8fa;
+  }
+  main { max-width: 760px; margin: 0 auto; background: #fff; padding: 40px 44px;
+         border: 1px solid #e5e7eb; border-radius: 10px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 32px 0 8px; color: #111827; }
+  .sub { color: #6b7280; font-size: 14px; margin: 0 0 28px; }
+  ul { padding-left: 20px; }
+  li { margin: 6px 0; }
+  a { color: #1d4ed8; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 15px; }
+  th, td { border: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: #f3f4f6; font-weight: 600; }
+  footer { max-width: 760px; margin: 20px auto 0; color: #9ca3af; font-size: 13px; text-align: center; }
+  @media (max-width: 600px) { main { padding: 28px 20px; } }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Aviso de Privacidad</h1>
+<p class="sub">Sistema de Monitoreo de Rutas · Última actualización: septiembre de 2026</p>
+
+<p>
+  Este aviso se emite conforme a la <strong>Ley Federal de Protección de Datos Personales
+  en Posesión de los Particulares</strong> y describe qué datos trata el sistema de
+  Monitoreo de Rutas, para qué los usa y cómo puede usted controlarlos.
+</p>
+
+<h2>1. Responsable</h2>
+<p>
+  <strong>Viajes Azteca Oro, S.A. de C.V.</strong> es la responsable del tratamiento de los
+  datos personales de sus conductores y personal operativo.
+</p>
+<p>
+  <strong>Nexori System</strong> (Sergio Daniel Guzmán Salas) opera la plataforma en calidad
+  de encargado, por cuenta y bajo instrucciones de la responsable, y no utiliza los datos
+  para ningún fin propio.
+</p>
+<p>Contacto para asuntos de privacidad: <a href="mailto:sergioguzman@nexorisystem.com">sergioguzman@nexorisystem.com</a></p>
+
+<h2>2. Datos que se tratan</h2>
+<table>
+  <thead><tr><th>Dato</th><th>Origen</th></tr></thead>
+  <tbody>
+    <tr><td>Nombre del conductor</td><td>Programación semanal entregada por la empresa</td></tr>
+    <tr><td>Unidad y ruta asignada</td><td>Programación semanal entregada por la empresa</td></tr>
+    <tr><td>Número de teléfono móvil</td><td>Directorio entregado por la empresa</td></tr>
+    <tr><td>Respuestas enviadas por WhatsApp</td><td>El propio conductor, al contestar</td></tr>
+    <tr><td>Fecha y hora de cada confirmación</td><td>Generado por el sistema</td></tr>
+    <tr><td><strong>Ubicación geográfica puntual</strong></td><td>El propio conductor, sólo si decide compartirla</td></tr>
+  </tbody>
+</table>
+<p>
+  No se recaban datos personales sensibles, ni datos financieros, ni el contenido de otras
+  conversaciones de WhatsApp. <strong>La ubicación no se rastrea de forma continua:</strong>
+  el sistema la solicita una sola vez, en el punto de control previo a la salida, y sólo se
+  registra si el conductor la envía voluntariamente desde WhatsApp. No hay seguimiento en
+  segundo plano ni acceso al dispositivo.
+</p>
+
+<h2>3. Para qué se usan</h2>
+<ul>
+  <li>Confirmar que el conductor está disponible antes de la hora de salida de su ruta.</li>
+  <li>Registrar los puntos de control de cada servicio y detectar retrasos a tiempo.</li>
+  <li>Avisar al personal de operaciones cuando una salida está en riesgo.</li>
+  <li>Generar reportes internos de cumplimiento de la operación.</li>
+</ul>
+<p>
+  No se usan para publicidad, no se elaboran perfiles comerciales y no se venden ni
+  comparten con terceros con fines mercadológicos.
+</p>
+
+<h2>4. Mensajería por WhatsApp</h2>
+<p>
+  Los mensajes viajan por la <em>WhatsApp Business Platform</em> de Meta Platforms, Inc., que
+  actúa como proveedor del canal de comunicación y trata los datos conforme a sus propias
+  políticas. Consulte la
+  <a href="https://www.whatsapp.com/legal/privacy-policy" target="_blank" rel="noopener">Política de Privacidad de WhatsApp</a>.
+</p>
+<p>
+  El conductor puede pedir en cualquier momento dejar de recibir estos mensajes,
+  respondiendo <strong>BAJA</strong> por el mismo canal o avisando a su supervisor.
+</p>
+
+<h2>5. Transferencias</h2>
+<p>
+  No se transfieren datos a terceros distintos de los estrictamente necesarios para operar
+  el servicio: el proveedor de mensajería (Meta) y el proveedor de infraestructura donde se
+  aloja el sistema. Fuera de estos casos, sólo se compartirían por requerimiento de una
+  autoridad competente.
+</p>
+
+<h2>6. Conservación y seguridad</h2>
+<p>
+  Los registros operativos se conservan durante <strong>12 meses</strong> y después se
+  eliminan o se anonimizan. La información viaja cifrada (HTTPS/TLS), la base de datos no
+  está expuesta a internet, el acceso al panel es nominal y con contraseña, y toda acción
+  administrativa queda auditada.
+</p>
+
+<h2>7. Derechos ARCO y eliminación de datos</h2>
+<p>
+  Usted puede solicitar el <strong>acceso</strong>, <strong>rectificación</strong>,
+  <strong>cancelación</strong> u <strong>oposición</strong> al tratamiento de sus datos, así
+  como <strong>revocar su consentimiento</strong> o pedir la
+  <strong>eliminación</strong> de su información.
+</p>
+<p>
+  Escriba a <a href="mailto:sergioguzman@nexorisystem.com">sergioguzman@nexorisystem.com</a>
+  indicando su nombre, la unidad que opera y el número de teléfono desde el que recibe los
+  mensajes. La solicitud se atiende en un plazo máximo de 20 días hábiles. La eliminación
+  del número implica dejar de recibir los mensajes de monitoreo.
+</p>
+
+<h2>8. Cambios a este aviso</h2>
+<p>
+  Cualquier modificación se publicará en esta misma dirección, con la fecha de actualización
+  al inicio del documento.
+</p>
+
+</main>
+<footer>Nexori System · Monitoreo de Rutas para Viajes Azteca Oro, S.A. de C.V.</footer>
+</body>
+</html>
