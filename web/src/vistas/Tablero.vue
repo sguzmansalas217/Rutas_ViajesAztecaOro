@@ -226,7 +226,6 @@ onUnmounted(() => clearInterval(temporizador));
     <div class="tarjeta amarillo"><div class="n">{{ resumen.marcajes.amarillo }}</div><div class="r">Amarillo</div></div>
     <div class="tarjeta rojo"><div class="n">{{ resumen.marcajes.rojo }}</div><div class="r">Rojo</div></div>
     <div class="tarjeta rojo"><div class="n">{{ resumen.por_resolver }}</div><div class="r">Por resolver</div></div>
-    <div class="tarjeta"><div class="n">{{ resumen.ventanasAbiertas }}</div><div class="r">Ventanas 24 h</div></div>
   </div>
 
   <table>
