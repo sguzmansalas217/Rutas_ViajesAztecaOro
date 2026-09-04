@@ -13,10 +13,34 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 import { config } from '../config.js';
-import { consultar, unaFila } from '../db.js';
+import { consultar, unaFila, parametro } from '../db.js';
 import { log } from '../log.js';
-import { abrirVentana } from '../dominio/ventana.js';
+import { abrirVentana, decidirCanal } from '../dominio/ventana.js';
 import { evaluarUbicacion, semaforoDe } from '../dominio/geocerca.js';
+import { enviarAConductor } from '../infra/whatsapp.js';
+
+/**
+ * Formas equivalentes de un mismo celular mexicano.
+ *
+ * Meta entrega el remitente como 521 + 10 dígitos (el '1' de móvil), pero el
+ * directorio del cliente y el importador guardan 52 + 10. Buscar por igualdad
+ * exacta hacía que NINGUNA respuesta amarrara con su conductor: el mensaje
+ * entraba, no encontraba a nadie y la ventana de 24 h no se abría nunca. Con la
+ * ventana cerrada todo el día siguiente sale por plantilla, o sea de golpe todo
+ * el margen del servicio. Por eso se buscan las dos formas.
+ */
+export function variantesTelefono(e164) {
+  const d = String(e164 ?? '').replace(/\D/g, '');
+  if (!d) return [];
+  const v = new Set([`+${d}`]);
+  if (d.length === 13 && d.startsWith('521')) v.add(`+52${d.slice(3)}`);
+  else if (d.length === 12 && d.startsWith('52')) v.add(`+521${d.slice(2)}`);
+  return [...v];
+}
+
+function interpolar(plantilla, datos) {
+  return String(plantilla).replace(/\{(\w+)\}/g, (_, k) => datos[k] ?? '');
+}
 
 function firmaValida(raw, cabecera, secreto) {
   if (!cabecera?.startsWith('sha256=')) return false;
@@ -108,9 +132,14 @@ async function procesarMensaje(mensaje, valor) {
   );
   if (!nuevo) return; // repetido
 
+  // El ANY cubre las dos formas del número; el ORDER BY prefiere la coincidencia
+  // exacta por si el catálogo llegara a tener las dos dadas de alta.
   const conductor = await unaFila(
-    'SELECT id, nombre FROM conductor WHERE telefono_e164 = $1',
-    [telefono],
+    `SELECT id, nombre, telefono_e164 FROM conductor
+      WHERE telefono_e164 = ANY($1)
+      ORDER BY (telefono_e164 = $2) DESC, id
+      LIMIT 1`,
+    [variantesTelefono(telefono), telefono],
   );
   if (!conductor) {
     log.warn({ telefono }, 'mensaje de un número que no está en el catálogo');
@@ -122,15 +151,25 @@ async function procesarMensaje(mensaje, valor) {
   //   queda abierta y todo lo que le mandemos hoy sale gratis.
   await abrirVentana(conductor.id, new Date(Number(mensaje.timestamp ?? Date.now() / 1000) * 1000));
 
-  // ¿A qué marcaje contesta? Al pendiente más cercano en el tiempo.
+  // ¿A qué marcaje contesta? Al último que se le PREGUNTÓ y sigue sin respuesta.
+  //
+  // Antes se buscaba el más cercano en el tiempo dentro de una ventana que se
+  // extendía una hora hacia adelante, y eso permitía contestar algo que todavía
+  // no se preguntaba: un "buenos días" a las 5:00 daba por cumplido el despertar
+  // de las 5:40, que ya nunca se enviaba. El conductor quedaba en verde sin que
+  // nadie le hubiera preguntado nada —justo lo contrario del servicio—.
+  //
+  // 'enviado_en IS NOT NULL' es la condición honesta: sólo se puede responder lo
+  // que ya salió. Y de haber dos abiertos, el que vale es el más reciente.
   const marcaje = await unaFila(
     `SELECT m.id, m.numero, m.programado_para
        FROM marcaje m
        JOIN asignacion a ON a.id = m.asignacion_id
       WHERE a.conductor_id = $1
         AND m.respondido_en IS NULL
-        AND m.programado_para BETWEEN now() - interval '4 hours' AND now() + interval '1 hour'
-      ORDER BY abs(extract(epoch FROM (now() - m.programado_para)))
+        AND m.enviado_en IS NOT NULL
+        AND m.enviado_en > now() - interval '4 hours'
+      ORDER BY m.enviado_en DESC
       LIMIT 1`,
     [conductor.id],
   );
@@ -141,12 +180,18 @@ async function procesarMensaje(mensaje, valor) {
 
   const evaluacion = latitud != null ? await evaluarUbicacion(latitud, longitud) : null;
 
-  const semaforo = await semaforoDe({
+  let semaforo = await semaforoDe({
     numero: marcaje.numero,
     respondidoEn: new Date(),
     programadoPara: marcaje.programado_para,
     evaluacion,
   });
+
+  // El marcaje 3 es el filtro: lo que se pide es la ubicación, no un "sí". Si
+  // contesta con texto queda registrado —no se le va a dejar el marcaje abierto
+  // por un celular que no comparte ubicación—, pero en amarillo, que es la
+  // verdad: hubo respuesta y no hubo comprobación.
+  if (marcaje.numero === 3 && latitud == null) semaforo = 'amarillo';
 
   await consultar(
     `UPDATE marcaje
@@ -164,4 +209,46 @@ async function procesarMensaje(mensaje, valor) {
     { conductor: conductor.nombre, marcaje: marcaje.numero, semaforo, ubicacion: Boolean(latitud) },
     'marcaje registrado',
   );
+
+  await acusarRecibo({ conductor, marcaje, semaforo, tieneUbicacion: latitud != null });
+}
+
+/**
+ * Le confirma al conductor que su respuesta contó.
+ *
+ * Sin esto contesta y no pasa nada visible: no sabe si le llegó al sistema y
+ * vuelve a escribir. Cada reintento suyo es una respuesta que ya no amarra con
+ * ningún marcaje y ruido para él.
+ *
+ * Nunca puede costar: el conductor acaba de escribir, así que la ventana de 24 h
+ * está abierta y el mensaje sale libre. Aun así se comprueba el canal antes de
+ * mandar —si algún día abrirVentana fallara, un acuse por plantilla sería pagar
+ * por decir "gracias"—.
+ */
+async function acusarRecibo({ conductor, marcaje, semaforo, tieneUbicacion }) {
+  try {
+    if (await parametro('acuse.activo', true) !== true) return;
+    if (await decidirCanal(conductor.id) !== 'libre') return;
+
+    const clave = marcaje.numero === 3 && !tieneUbicacion ? 'acuse.sin_ubicacion'
+      : marcaje.numero === 3 ? 'acuse.ubicacion'
+      : semaforo === 'amarillo' ? 'acuse.tarde'
+      : 'acuse.generico';
+
+    const cuerpo = interpolar(
+      await parametro(clave, '✅ Registrado, {nombre}.'),
+      { nombre: (conductor.nombre ?? '').split(' ')[0] },
+    );
+
+    await enviarAConductor({
+      conductorId: conductor.id,
+      telefono: conductor.telefono_e164,
+      texto: cuerpo,
+      marcajeId: marcaje.id,
+    });
+  } catch (e) {
+    // El acuse es cortesía: que falle no puede tirar el registro del marcaje,
+    // que ya quedó guardado arriba.
+    log.warn({ err: e, conductor: conductor.nombre }, 'no se pudo acusar recibo');
+  }
 }
