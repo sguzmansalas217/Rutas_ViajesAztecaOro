@@ -2,19 +2,25 @@
 //
 // Distinto de preparar-prueba.js, que recorta las fechas del archivo del
 // cliente pero conserva sus 30 conductores reales. Aquí el archivo se escribe
-// desde cero con una sola celda ocupada: ningún número real puede recibir un
-// WhatsApp por accidente, aunque alguien marque otra unidad como contratada.
+// desde cero con una sola celda ocupada: sólo puede mandar un WhatsApp a ese
+// conductor, y sólo si su unidad está contratada.
 //
-// La ruta y el encargado son los del archivo real (MAÑANA fila 8) para que el
-// tablero se vea como se va a ver en producción y no como una maqueta.
+// Todo lo que se escribe sale del archivo real (MAÑANA fila 23: JAIME 202 en
+// NUEVO POBLADO - SAUCITO, encargado GERARDO). Nada dice «prueba»: el tablero
+// tiene que verse como se va a ver en producción, y un rótulo de prueba en la
+// pantalla es lo que hace que nadie confíe en lo que está viendo.
+//
+// El precio de eso es que el conductor por omisión es una persona real. No
+// recibe nada mientras no tenga teléfono capturado y su unidad contratada,
+// pero es un candado menos que antes: si le pones un teléfono, le llega.
 //
 //   node herramientas/prueba-una-ruta.js [opciones]
 //     --hora       15:00              hora de monitoreo   (por omisión: dentro de 6 min)
-//     --conductor  "PRUEBA UNO 21"    texto tal cual va en la celda del día
-//     --ruta       "ALCOHOLIMETRO ZAC"
-//     --parada     "TERMINAL"
-//     --nota       "PRUEBA DE MONITOREO"
-//     --encargado  SERGIO
+//     --conductor  "JAIME 202"        texto tal cual va en la celda del día
+//     --ruta       "NUEVO POBLADO - SAUCITO"
+//     --parada     "PROVIDENCIA EN LA PARADA DEL CAMION"
+//     --nota       ""
+//     --encargado  GERARDO
 //     --dia        2026-09-04         día que se llena    (por omisión hoy)
 //     --salida     archivo.xlsx
 import { writeFile } from 'node:fs/promises';
@@ -44,11 +50,14 @@ if (hh > 23 || mi > 59) {
   process.exit(1);
 }
 
-const conductor = opt('conductor', 'PRUEBA UNO 21');
-const nombreRuta = opt('ruta', 'ALCOHOLIMETRO ZAC');
-const parada = opt('parada', 'PLAZA BICENTENARIO');
-const nota = opt('nota', 'PRUEBA DE MONITOREO');
-const encargado = opt('encargado', 'SERGIO');
+// Los valores por omisión son los de MAÑANA fila 23 del archivo del cliente,
+// tal cual vienen ahí. Cambiarlos por rótulos inventados hace que la prueba
+// valide una pantalla que nadie va a ver.
+const conductor = opt('conductor', 'JAIME 202');
+const nombreRuta = opt('ruta', 'NUEVO POBLADO - SAUCITO');
+const parada = opt('parada', 'PROVIDENCIA EN LA PARADA DEL CAMION');
+const nota = opt('nota', '');
+const encargado = opt('encargado', 'GERARDO');
 const salida = opt('salida', 'prueba-una-ruta.xlsx');
 
 // ── La semana del día elegido, de lunes a domingo ───────────────────────────
@@ -71,8 +80,12 @@ const DIAS = ['LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO', 'DO
 const libro = new ExcelJS.Workbook();
 const hoja = libro.addWorksheet('MAÑANA');
 
+// Encabezado idéntico al del cliente (filas 1-3 del archivo real). El
+// importador no lo lee —localiza la fila de fechas por su contenido—, pero el
+// archivo se abre en Excel antes de subirlo y tiene que verse como el suyo.
+hoja.getRow(1).getCell(3).value = 'FORMATO';
 hoja.getRow(2).getCell(3).value = 'MONITOREO DE RUTAS';
-hoja.getRow(3).getCell(2).value = 'RELACION SEMANAL MONITOREO — PRUEBA';
+hoja.getRow(3).getCell(2).value = 'RELACION SEMANAL MONITOREO TURNO A';
 
 // UTC a propósito: así las lee el importador y el huso horario no corre el día.
 for (let i = 0; i < 7; i++) {
