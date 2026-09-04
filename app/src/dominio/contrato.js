@@ -11,6 +11,7 @@
 //  si se pasa, la base tira el INSERT/UPDATE y el error sube tal cual.
 // ============================================================================
 import { filas, unaFila, parametro } from '../db.js';
+import { programarVarias } from './programacion.js';
 
 export async function limiteVehiculos() {
   return Number(await parametro('limite.vehiculos', 30)) || 30;
@@ -149,5 +150,10 @@ export async function resincronizarAsignaciones() {
       RETURNING a.id`,
   );
 
-  return { sacadas: fuera.length, metidas: dentro.length };
+  // Las que entraron y quedaron 'programada' no tienen marcajes: nacieron
+  // 'fuera_contrato' y la carga del Excel las saltó. Se programan aquí o la
+  // unidad queda contratada, cobrándose, y sin mandar un solo mensaje.
+  const programados = await programarVarias(dentro.map((a) => a.id));
+
+  return { sacadas: fuera.length, metidas: dentro.length, programados };
 }

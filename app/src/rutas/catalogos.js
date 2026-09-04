@@ -5,6 +5,7 @@ import { filas, unaFila, consultar, auditar, parametros, fijarParametro } from '
 import { aE164, normalizar } from '../dominio/normalizar.js';
 import { esProveedor } from '../dominio/proveedor.js';
 import { enviarAviso } from '../infra/whatsapp.js';
+import { programarVarias } from '../dominio/programacion.js';
 import {
   estadoContrato, listarVehiculos, fijarContratado,
   proponerContratados, resincronizarAsignaciones,
@@ -67,18 +68,26 @@ export default async function catalogos(app) {
 
     // Al capturar el teléfono, las asignaciones pendientes de ese conductor
     // se activan solas. Es el flujo natural: llega el dato, arranca el servicio.
+    //
+    // Y se les programan los marcajes aquí mismo. Activarlas sin programar deja
+    // la fila en el tablero como «Sin marcajes» y sin mandar nada: el dato ya
+    // llegó, el servicio no arrancó, y no hay forma de notarlo desde la
+    // pantalla.
     let reactivadas = 0;
+    let programados = 0;
     if (c.telefono_e164) {
       const r = await consultar(
         `UPDATE asignacion SET estado = 'programada'
-          WHERE conductor_id = $1 AND estado = 'por_resolver' AND fecha >= current_date`,
+          WHERE conductor_id = $1 AND estado = 'por_resolver' AND fecha >= current_date
+          RETURNING id`,
         [c.id],
       );
       reactivadas = r.rowCount;
+      programados = await programarVarias(r.rows.map((f) => f.id));
     }
 
-    await auditar({ usuarioId: req.user.id, accion: 'edita_conductor', entidad: 'conductor', entidadId: c.id, detalle: { reactivadas }, ip: req.ip });
-    return { ...c, reactivadas };
+    await auditar({ usuarioId: req.user.id, accion: 'edita_conductor', entidad: 'conductor', entidadId: c.id, detalle: { reactivadas, programados }, ip: req.ip });
+    return { ...c, reactivadas, programados };
   });
 
   // Fusionar dos conductores que resultaron ser la misma persona

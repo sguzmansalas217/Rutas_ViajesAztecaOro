@@ -55,10 +55,18 @@ export async function programarSemana(desde, hasta) {
 }
 
 /**
- * Reprograma una asignación suelta (por ejemplo, después de resolverla desde
- * la bandeja de pendientes). Idempotente.
+ * Programa los marcajes de asignaciones sueltas que acaban de quedar en
+ * 'programada' FUERA de la carga del Excel: al capturar un teléfono que
+ * faltaba, o al meter una unidad al contrato.
+ *
+ * Sin esto la asignación se activa pero nace sin marcajes: el tablero la
+ * enseña como «Sin marcajes» y no manda nada nunca. Se veía como si el sistema
+ * estuviera roto, y la única forma de destrabarlo era volver a subir el Excel.
+ *
+ * Idempotente: el ON CONFLICT deja pasar las que ya tienen marcajes.
  */
-export async function programarAsignacion(asignacionId) {
+export async function programarVarias(ids) {
+  if (!ids?.length) return 0;
   const p = await parametros();
   const r = await consultar(
     `INSERT INTO marcaje (asignacion_id, numero, programado_para, estado)
@@ -71,11 +79,14 @@ export async function programarAsignacion(asignacionId) {
             'pendiente'
        FROM asignacion a JOIN ruta r ON r.id = a.ruta_id
        CROSS JOIN (VALUES (1, $3::int), (2, $4::int), (3, $5::int), (4, $6::int)) AS n(numero, desfase)
-      WHERE a.id = $1 AND a.estado = 'programada'
+      WHERE a.id = ANY($1::int[]) AND a.estado = 'programada'
      ON CONFLICT (asignacion_id, numero) DO NOTHING`,
-    [asignacionId, ZONA,
+    [ids.map(Number), ZONA,
      Number(p['marcaje1.desfase_min'] ?? 0), Number(p['marcaje2.retraso_min'] ?? 10),
      Number(p['marcaje3.desfase_min'] ?? -20), Number(p['marcaje4.desfase_min'] ?? 0)],
   );
   return r.rowCount;
 }
+
+/** Reprograma una asignación suelta. Idempotente. */
+export const programarAsignacion = (asignacionId) => programarVarias([asignacionId]);
