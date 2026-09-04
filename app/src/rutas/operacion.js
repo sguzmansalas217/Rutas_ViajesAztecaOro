@@ -47,9 +47,15 @@ export default async function operacion(app) {
               r.nombre AS ruta, r.turno, r.hora_monitoreo, r.encargado,
               v.clave  AS unidad,
               c.nombre AS conductor, c.telefono_e164,
+              -- 'enviado' es lo que separa "no ha contestado" de "todavía no se
+              -- le pregunta". Sin ese dato el tablero no puede decir en qué
+              -- punto va la ruta: un hueco en blanco se lee igual en los dos
+              -- casos y son cosas distintas —uno es para hablarle al
+              -- conductor, el otro es esperar—.
               (SELECT json_agg(json_build_object(
                         'numero', m.numero, 'estado', m.estado, 'semaforo', m.semaforo,
-                        'programado', m.programado_para, 'respondido', m.respondido_en)
+                        'programado', m.programado_para, 'enviado', m.enviado_en,
+                        'respondido', m.respondido_en)
                       ORDER BY m.numero)
                  FROM marcaje m WHERE m.asignacion_id = a.id) AS marcajes
          FROM asignacion a
