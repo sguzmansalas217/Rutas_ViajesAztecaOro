@@ -421,6 +421,8 @@ input::placeholder { color: #9aa8bd; }
 
 .tenue-txt { color: var(--tenue); font-size: 12px; }
 .tenue-txt.mal { color: var(--rojo); }
+ol.canales { margin: 0 0 12px; padding-left: 20px; }
+ol.canales li { margin-bottom: 6px; }
 
 /* ── Entrada ──────────────────────────────────────────────────────────────
    Ocupa la ventana entera: en el login no hay barra lateral ni cabecera, y

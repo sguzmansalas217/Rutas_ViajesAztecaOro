@@ -99,25 +99,37 @@ async function vencerYAlertar() {
     return;
   }
 
-  const lineas = vencidos
+  // Dos formas de la misma lista. La de renglones es la que se lee bien en el
+  // celular; la de una línea es para la plantilla, porque Meta rechaza el envío
+  // entero si un parámetro trae saltos de línea.
+  const items = vencidos
     .slice(0, 15)
-    .map((v) => `• ${v.conductor ?? '?'} — ${v.ruta} (${NOMBRE_MARCAJE[v.numero] ?? `marcaje ${v.numero}`})`);
-  const extra = vencidos.length > 15 ? `\n…y ${vencidos.length - 15} más` : '';
+    .map((v) => `${v.conductor ?? '?'} — ${v.ruta} (${NOMBRE_MARCAJE[v.numero] ?? `marcaje ${v.numero}`})`);
+  const extra = vencidos.length > 15 ? ` …y ${vencidos.length - 15} más` : '';
+
   const r = await enviarAviso(
     telefonoAviso,
-    `🔴 Sin respuesta (${vencidos.length}):\n${lineas.join('\n')}${extra}`,
+    `🔴 Sin respuesta (${vencidos.length}):\n${items.map((i) => `• ${i}`).join('\n')}${extra}`,
+    {
+      plantilla: String(await parametro('wa.plantilla_alerta', 'alerta_sin_respuesta')),
+      variables: [String(vencidos.length), items.join(' · ') + extra],
+    },
   );
-  // 131047 es el "re-engagement message" de Meta: la ventana de 24 h de ESE
-  // número está cerrada. No es un problema de red ni del token —es que el
-  // encargado no ha escrito— y se arregla distinto, así que se distingue.
-  if (!r.ok) {
-    log.error(
-      { codigo: r.codigo, telefono: telefonoAviso },
-      r.codigo === 131047
-        ? '🔴 el aviso NO llegó: la ventana de 24 h del encargado está cerrada, tiene que escribirle al número del sistema'
-        : '🔴 el aviso NO llegó al encargado',
-    );
+
+  if (r.ok) {
+    // Cuando el aviso sale por plantilla se está pagando por avisar. Con un
+    // encargado que no escribe nunca eso son 30 pesos al mes por nada: si
+    // contesta el aviso, el resto del día sale gratis. Queda en el log para
+    // que se note antes de que aparezca en el corte.
+    if (r.canal === 'plantilla') {
+      log.warn({ costoUsd: r.costoUsd }, 'aviso por plantilla: el encargado no tiene ventana abierta');
+    }
+    return;
   }
+  log.error(
+    { codigo: r.codigo, canal: r.canal, telefono: telefonoAviso },
+    '🔴 el aviso NO llegó al encargado',
+  );
 }
 
 // ── Procesador de la cola de envíos ─────────────────────────────────────────

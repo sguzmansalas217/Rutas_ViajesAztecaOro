@@ -155,31 +155,108 @@ export async function pedirUbicacion({ conductorId, telefono, texto, marcajeId }
   return { canal: 'libre', waId: r?.messages?.[0]?.id ?? null, costoUsd: 0 };
 }
 
+// El "re-engagement message" de Meta: la ventana de 24 h de ese número está
+// cerrada. No es una falla del sistema ni del token, y no se arregla
+// reintentando lo mismo: hay que cambiar de canal.
+const VENTANA_CERRADA = 131047;
+
+// Meta rechaza el envío COMPLETO si un parámetro de plantilla trae un salto de
+// línea, un tabulador o cuatro espacios seguidos. La lista de conductores es
+// justo eso —un renglón por conductor—, así que se aplana antes de mandarla.
+function aplanar(v) {
+  const t = String(v ?? '')
+    .replace(/\s*[\r\n]+\s*/g, ' · ')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim()
+    .slice(0, 900);
+  return t || '—';
+}
+
+// Regla 2 de este archivo: todo envío se registra con su costo. El aviso no es
+// excepción —el respaldo por plantilla se paga igual que el de un conductor—,
+// y la vista costo_meta_mes es la que alimenta el medidor de margen: un aviso
+// sin registrar es dinero que sale sin aparecer en ninguna cuenta.
+async function registrarAviso({ tipo, plantilla = null, cuerpo, r = null, costoUsd = 0, estado = 'enviado', error = null }) {
+  try {
+    await consultar(
+      `INSERT INTO mensaje_saliente
+         (conductor_id, tipo, plantilla, cuerpo, wa_message_id, estado, costo_usd, error)
+       VALUES (NULL, $1, $2, $3, $4, $5, $6, $7)`,
+      [tipo, plantilla, cuerpo, r?.messages?.[0]?.id ?? null, estado,
+       estado === 'fallido' ? 0 : costoUsd, error],
+    );
+  } catch (e) {
+    // Que falle la bitácora no puede impedir que el aviso salga: el rojo que
+    // avisa vale más que el renglón que lo contabiliza.
+    log.error({ err: e }, 'no se pudo registrar el aviso en mensaje_saliente');
+  }
+}
+
 /**
  * Aviso a un encargado o al operador. Va al número que traiga configurado.
  *
- * ⚠️ Sale como texto libre, así que Meta sólo lo entrega si ESE número escribió
- * al número del sistema en las últimas 24 h. Un encargado nunca escribe, así
- * que en la práctica el aviso deja de llegar al día siguiente y nadie se
- * entera: por eso devuelve el resultado en vez de tragárselo. Quien llama
- * decide qué hacer —el trabajador lo registra en el log, la pantalla de
- * Alertas se lo enseña al administrador—.
+ * WhatsApp no deja escribirle primero a nadie: el texto libre sólo se entrega
+ * si ESE número escribió al del sistema en las últimas 24 h. Un encargado no
+ * escribe nunca, así que el aviso llegaba el primer día y al siguiente se
+ * apagaba solo, con el error enterrado en el log. De ahí el respaldo: si Meta
+ * contesta 131047 el mismo aviso se reintenta por plantilla, que entra tenga
+ * o no ventana.
  *
- * @returns {Promise<{ok: boolean, waId?: string|null, error?: string, codigo?: number|null}>}
+ * Se intenta primero el texto libre a propósito, aunque casi siempre falle: es
+ * gratis y la plantilla no. Un rechazo no cuesta nada, así que el orden es
+ * "gratis primero, y se paga sólo cuando no queda de otra".
+ *
+ * @param {string} telefono            E.164
+ * @param {string} texto               cuerpo del mensaje libre
+ * @param {object} [respaldo]          {plantilla, variables, idioma} para cuando no hay ventana
+ * @returns {Promise<{ok, canal, costoUsd, waId?, error?, codigo?}>}
  */
-export async function enviarAviso(telefono, texto) {
-  if (!telefono) return { ok: false, error: 'No hay número configurado' };
+export async function enviarAviso(telefono, texto, respaldo = null) {
+  if (!telefono) return { ok: false, canal: null, costoUsd: 0, error: 'No hay número configurado' };
+
   try {
     const r = await llamarMeta({
       messaging_product: 'whatsapp', to: telefono, type: 'text', text: { body: texto },
     });
-    return { ok: true, waId: r?.messages?.[0]?.id ?? null };
+    await registrarAviso({ tipo: 'libre', cuerpo: texto, r });
+    return { ok: true, canal: 'libre', costoUsd: 0, waId: r?.messages?.[0]?.id ?? null };
   } catch (e) {
-    log.error({ err: e, telefono }, 'no se pudo enviar el aviso al encargado');
+    const codigo = e.detalleMeta?.error?.code ?? null;
+    if (codigo !== VENTANA_CERRADA || !respaldo?.plantilla) {
+      log.error({ err: e, telefono, codigo }, 'no se pudo enviar el aviso al encargado');
+      await registrarAviso({ tipo: 'libre', cuerpo: texto, estado: 'fallido', error: e.message });
+      return { ok: false, canal: 'libre', costoUsd: 0, error: e.message, codigo };
+    }
+    log.info({ telefono }, 'ventana cerrada para el aviso: se manda por plantilla');
+  }
+
+  const costoUsd = Number(await parametro('tarifa.meta_utility_usd', 0.0085));
+  const variables = (respaldo.variables ?? []).map(aplanar);
+  const resumen = variables.join(' | ');
+  try {
+    const r = await llamarMeta({
+      messaging_product: 'whatsapp',
+      to: telefono,
+      type: 'template',
+      template: {
+        name: respaldo.plantilla,
+        language: { code: respaldo.idioma ?? 'es_MX' },
+        components: variables.length
+          ? [{ type: 'body', parameters: variables.map((t) => ({ type: 'text', text: t })) }]
+          : [],
+      },
+    });
+    await registrarAviso({ tipo: 'plantilla', plantilla: respaldo.plantilla, cuerpo: resumen, r, costoUsd });
+    return { ok: true, canal: 'plantilla', costoUsd, waId: r?.messages?.[0]?.id ?? null };
+  } catch (e) {
+    log.error({ err: e, telefono, plantilla: respaldo.plantilla }, 'el aviso tampoco salió por plantilla');
+    await registrarAviso({
+      tipo: 'plantilla', plantilla: respaldo.plantilla, cuerpo: resumen,
+      estado: 'fallido', error: e.message,
+    });
     return {
-      ok: false,
-      error: e.message,
-      codigo: e.detalleMeta?.error?.code ?? null,
+      ok: false, canal: 'plantilla', costoUsd: 0,
+      error: e.message, codigo: e.detalleMeta?.error?.code ?? null,
     };
   }
 }

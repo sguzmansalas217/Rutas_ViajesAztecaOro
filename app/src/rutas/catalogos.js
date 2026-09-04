@@ -260,24 +260,29 @@ export default async function catalogos(app) {
     const telefono = String(p['aviso.encargado_telefono'] ?? '');
     if (!telefono) return reply.code(400).send({ error: 'No hay número configurado' });
 
+    // Se prueba el camino completo, respaldo incluido: lo que interesa saber
+    // no es si el texto libre sale —casi nunca sale— sino si el aviso LLEGA.
+    const plantilla = String(p['wa.plantilla_alerta'] ?? 'alerta_sin_respuesta');
     const r = await enviarAviso(
       telefono,
       '🔔 Prueba de alertas · Monitoreo de Rutas.\n\nSi lees esto, los avisos de rojo van a llegar a este número.',
+      { plantilla, variables: ['1', 'PRUEBA — esto es sólo una comprobación, no hay ningún marcaje en rojo'] },
     );
     await auditar({
       usuarioId: req.user.id, accion: 'prueba_alerta', entidad: 'parametro',
-      detalle: { telefono, ok: r.ok, codigo: r.codigo ?? null }, ip: req.ip,
+      detalle: { telefono, ok: r.ok, canal: r.canal, codigo: r.codigo ?? null }, ip: req.ip,
     });
 
-    if (r.ok) return { ok: true, telefono };
+    if (r.ok) return { ok: true, telefono, canal: r.canal, costoUsd: r.costoUsd };
     return {
       ok: false,
       telefono,
-      // 131047 no es una falla del sistema: es la ventana de 24 h cerrada, y
-      // se arregla del lado del encargado. Merece su propia explicación o el
-      // administrador se pone a revisar el token, que está bien.
-      error: r.codigo === 131047
-        ? 'WhatsApp no deja escribirle primero a este número. El encargado tiene que mandar un mensaje —lo que sea— al número del sistema; con eso se abre la ventana de 24 h.'
+      canal: r.canal,
+      // Que falle la plantilla casi siempre es que no existe o no está
+      // aprobada. Vale la pena decirlo con su nombre: si no, el administrador
+      // se pone a revisar el token, que está bien.
+      error: r.canal === 'plantilla'
+        ? `El texto libre no entró (la ventana de 24 h está cerrada) y la plantilla de respaldo «${plantilla}» tampoco: ${r.error}`
         : r.error,
       codigo: r.codigo ?? null,
     };

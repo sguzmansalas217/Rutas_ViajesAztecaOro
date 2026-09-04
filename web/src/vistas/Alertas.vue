@@ -18,7 +18,7 @@ const probando = ref(false);
 
 const telefono = ref('');
 const espera = ref(5);
-const guardado = ref({ telefono: '', espera: 5 });
+const guardado = ref({ telefono: '', espera: 5, plantilla: '' });
 
 // Se teclea como se dicta —10 dígitos— y se guarda en E.164, que es lo único
 // que Meta acepta. Si viene con lada del país se respeta tal cual.
@@ -45,6 +45,7 @@ async function cargar() {
     guardado.value = {
       telefono: String(p['aviso.encargado_telefono'] ?? ''),
       espera: Number(p['alerta.espera_min'] ?? 5),
+      plantilla: String(p['wa.plantilla_alerta'] ?? ''),
     };
     telefono.value = guardado.value.telefono;
     espera.value = guardado.value.espera;
@@ -78,8 +79,12 @@ async function probar() {
     // motivo. Una ventana de 24 h cerrada no es un error del sistema y no se
     // pinta como tal —se explica, porque se arregla del otro lado—.
     const r = await api.post('/catalogos/alertas/prueba', {});
-    if (r.ok) aviso.value = `Mensaje enviado a ${r.telefono}. Si no llega en un minuto, revisa el número.`;
-    else fallo.value = r.error;
+    if (!r.ok) { fallo.value = r.error; return; }
+    // Por dónde salió no es un detalle técnico: es la diferencia entre un
+    // aviso gratis y uno que se cobra cada vez, todos los días del mes.
+    aviso.value = r.canal === 'plantilla'
+      ? `Enviado a ${r.telefono} por plantilla, porque ese número no tiene ventana de 24 h abierta. Llega, pero cada aviso se cobra. Si el encargado contesta cualquier cosa, el resto del día sale gratis.`
+      : `Enviado a ${r.telefono} por texto libre, sin costo. Si no llega en un minuto, revisa el número.`;
   } catch (e) {
     error.value = e.message;
   } finally {
@@ -138,17 +143,27 @@ onMounted(cargar);
     </div>
 
     <div class="caja">
-      <h3>Comprobar que llega</h3>
+      <h3>Cómo llega</h3>
       <p class="tenue-txt" style="margin-top:0">
         WhatsApp <strong>no deja escribirle primero</strong> a un número que no ha
-        escrito antes. Para que el aviso llegue, quien lo recibe tiene que mandarle
-        un mensaje —lo que sea— al número del sistema; eso abre una ventana de
-        24 horas. Si pasa un día entero sin que escriba, la ventana se cierra y el
-        aviso deja de entregarse sin que nadie lo note.
+        escrito antes. Quien recibe las alertas tendría que mandarle un mensaje
+        —lo que sea— al número del sistema cada día para que el aviso saliera
+        gratis, y nadie se acuerda de eso.
       </p>
       <p class="tenue-txt">
-        Por eso conviene probarlo de vez en cuando, y no esperar a que haya un rojo
-        de verdad para descubrir que no llegaba.
+        Por eso el sistema intenta las dos cosas, en este orden:
+      </p>
+      <ol class="tenue-txt canales">
+        <li><strong>Texto libre</strong> — gratis. Sólo entra si ese número escribió en las últimas 24 h.</li>
+        <li>
+          <strong>Plantilla</strong> — entra siempre, pero <strong>se cobra</strong> cada aviso.
+          <template v-if="guardado.plantilla">Usa «{{ guardado.plantilla }}», que tiene que estar aprobada en Meta.</template>
+        </li>
+      </ol>
+      <p class="tenue-txt">
+        Un rechazo de Meta no cuesta nada, así que probar el camino gratis primero
+        sale gratis. Conviene comprobarlo de vez en cuando y no esperar a que haya
+        un rojo de verdad para descubrir que el aviso no llegaba.
       </p>
       <button v-if="esAdmin" class="tenue" :disabled="probando || !configurado || cambio" @click="probar">
         {{ probando ? 'Mandando…' : 'Mandar mensaje de prueba' }}
