@@ -12,6 +12,8 @@
 //     --hora       15:00              hora de monitoreo   (por omisión: dentro de 6 min)
 //     --conductor  "PRUEBA UNO 21"    texto tal cual va en la celda del día
 //     --ruta       "ALCOHOLIMETRO ZAC"
+//     --parada     "TERMINAL"
+//     --nota       "PRUEBA DE MONITOREO"
 //     --encargado  SERGIO
 //     --dia        2026-09-04         día que se llena    (por omisión hoy)
 //     --salida     archivo.xlsx
@@ -44,6 +46,8 @@ if (hh > 23 || mi > 59) {
 
 const conductor = opt('conductor', 'PRUEBA UNO 21');
 const nombreRuta = opt('ruta', 'ALCOHOLIMETRO ZAC');
+const parada = opt('parada', 'PLAZA BICENTENARIO');
+const nota = opt('nota', 'PRUEBA DE MONITOREO');
 const encargado = opt('encargado', 'SERGIO');
 const salida = opt('salida', 'prueba-una-ruta.xlsx');
 
@@ -93,8 +97,8 @@ const fila = hoja.getRow(6);
 fila.getCell(2).value = (hh * 60 + mi) / 1440;
 fila.getCell(2).numFmt = 'h:mm';
 fila.getCell(3).value = nombreRuta;
-fila.getCell(4).value = 'PRUEBA DE MONITOREO';
-fila.getCell(5).value = 'PLAZA BICENTENARIO';
+fila.getCell(4).value = nota;
+fila.getCell(5).value = parada;
 fila.getCell(6 + indiceHoy).value = conductor;   // sólo el día de hoy
 fila.getCell(13).value = encargado;
 
