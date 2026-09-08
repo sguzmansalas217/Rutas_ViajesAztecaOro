@@ -192,7 +192,7 @@ async function revisarPlantillas() {
   console.log(c.tit('4. Plantillas'));
   let ps = [];
   try {
-    const r = await graph(`${CUENTA}/message_templates?fields=name,status,category,language&limit=100`);
+    const r = await graph(`${CUENTA}/message_templates?fields=name,status,category,language,components&limit=100`);
     ps = r.data ?? [];
   } catch (e) {
     falla(`No pude listar las plantillas: ${e.message}`);
@@ -216,11 +216,42 @@ async function revisarPlantillas() {
   const marcaje = aprobadas.find((p) => p.name === 'marcaje_despertar' && p.language === 'es_MX');
   if (marcaje) {
     console.log(c.ok('La plantilla marcaje_despertar (es_MX) está aprobada'));
+    revisarParametros(marcaje, 3, 'marcaje_despertar', 'nombre, ruta y hora');
   } else {
     console.log(c.ojo('Falta la plantilla marcaje_despertar en es_MX, que es la que usa el sistema por defecto'));
     pendientes.push('Crea la plantilla UTILITY «marcaje_despertar» en es_MX, o cambia el parámetro wa.plantilla_marcaje1 al nombre que sí tengas');
   }
+
+  const alerta = aprobadas.find((p) => p.name === 'alerta_sin_respuesta' && p.language === 'es_MX');
+  if (alerta) {
+    console.log(c.ok('La plantilla alerta_sin_respuesta (es_MX) está aprobada'));
+    revisarParametros(alerta, 2, 'alerta_sin_respuesta', 'cuántos y quiénes');
+  } else {
+    console.log(c.ojo('Falta alerta_sin_respuesta (es_MX): si la ventana de 24 h del encargado está cerrada, la alerta no sale'));
+    pendientes.push('Crea la plantilla UTILITY «alerta_sin_respuesta» en es_MX con dos variables: {{1}} cuántos van sin contestar y {{2}} la lista');
+  }
   return aprobadas;
+}
+
+/**
+ * Meta rechaza el envío COMPLETO si el número de parámetros no cuadra con el
+ * cuerpo aprobado (error 132000). No avisa antes, no manda a medias: el
+ * conductor simplemente no recibe nada y el marcaje se queda en 'fallido'.
+ *
+ * Como el cuerpo se aprueba en el panel de Meta y las variables se arman en el
+ * código, los dos se pueden separar sin que nadie lo note hasta el primer
+ * envío de verdad, a las 3:30 de la mañana. Aquí se comparan.
+ */
+function revisarParametros(plantilla, esperados, nombre, quees) {
+  const cuerpo = (plantilla.components ?? []).find((x) => x.type === 'BODY')?.text ?? '';
+  const tiene = new Set([...cuerpo.matchAll(/\{\{\s*(\d+)\s*\}\}/g)].map((m) => Number(m[1]))).size;
+  console.log(c.gris(`      «${cuerpo.replace(/\s+/g, ' ').trim()}»`));
+  if (tiene === esperados) {
+    console.log(c.ok(`   ${esperados} variable(s), igual que el código: ${quees}`));
+    return;
+  }
+  falla(`   La plantilla aprobada tiene ${tiene} variable(s) y el código manda ${esperados} (${quees}). Meta va a rechazar el envío entero`,
+    `Ajusta «${nombre}»: o el cuerpo aprobado lleva ${esperados} variables, o el código manda ${tiene}`);
 }
 
 // ── 4. Webhook ─────────────────────────────────────────────────────────────
