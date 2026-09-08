@@ -285,22 +285,32 @@ export default async function catalogos(app) {
     ));
 
   // ── Parámetros (precios, tarifas, umbrales) ───────────────────────────────
-  // Los 'precio.*' son lo que el cliente paga y los ve cualquiera: es su
-  // contrato. Los 'tarifa.*' son lo que el servicio cuesta —lo de Meta, el
-  // tipo de cambio— y ésos sólo el proveedor; con los dos juntos se saca el
-  // margen con una resta. Se filtra aquí y no en la vista: la vista no es
-  // una barrera, quien tenga sesión puede pegarle a la ruta a mano.
+  // Tres familias son del proveedor y de nadie más:
+  //
+  //   tarifa.*         lo que el servicio cuesta (Meta, tipo de cambio)
+  //   precio.*         cómo se arma lo que el cliente paga
+  //   limite.vehiculos cuántas unidades cubre el contrato
+  //
+  // Las dos primeras juntas dan el margen con una resta. La tercera mueve el
+  // importe de la factura, así que la fija quien vende, no quien compra: al
+  // cliente se le enseña el número ya hecho en Mi cuenta.
+  //
+  // Se filtra aquí y no en la vista: la vista no es una barrera, quien tenga
+  // sesión puede pegarle a la ruta a mano.
+  const SOLO_PROVEEDOR = (clave) =>
+    clave.startsWith('tarifa.') || clave.startsWith('precio.') || clave === 'limite.vehiculos';
+
   app.get('/parametros', async (req) => {
     const todos = await parametros();
     if (esProveedor(req)) return todos;
-    return Object.fromEntries(Object.entries(todos).filter(([c]) => !c.startsWith('tarifa.')));
+    return Object.fromEntries(Object.entries(todos).filter(([c]) => !SOLO_PROVEEDOR(c)));
   });
 
   app.put('/parametros/:clave', { preHandler: [app.exigirRol('admin')] }, async (req, reply) => {
     if (!Object.hasOwn(req.body ?? {}, 'valor')) {
       return reply.code(400).send({ error: 'Falta el valor' });
     }
-    if (req.params.clave.startsWith('tarifa.') && !esProveedor(req)) {
+    if (SOLO_PROVEEDOR(req.params.clave) && !esProveedor(req)) {
       return reply.code(403).send({ error: 'Sin permisos para esta operación' });
     }
     // Cambiar precio.* es ejercer la Cláusula Cuarta: queda en bitácora.

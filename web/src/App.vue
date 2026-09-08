@@ -2,7 +2,7 @@
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api, fijarToken, hayToken } from './api.js';
-import { usuario, cargarSesion, olvidarSesion } from './sesion.js';
+import { usuario, cargarSesion, olvidarSesion, esProveedor } from './sesion.js';
 
 const ruta = useRoute();
 const router = useRouter();
@@ -27,7 +27,7 @@ const MENU = [
       { a: '/carga', texto: 'Cargar Excel', roles: ['admin', 'operador'], d: ['M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4', 'M17 8l-5-5-5 5', 'M12 3v12'] },
       { a: '/filtros', texto: 'Filtros', d: ['M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z', 'M12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z'] },
       { a: '/alertas', texto: 'Alertas', roles: ['admin'], d: ['M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9', 'M13.7 21a2 2 0 0 1-3.4 0'] },
-      { a: '/cobro', texto: 'Cobro', roles: ['admin'], d: ['M12 1v22', 'M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6'] },
+      { a: '/cobro', texto: 'Cobro', proveedor: true, d: ['M12 1v22', 'M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6'] },
       { a: '/usuarios', texto: 'Usuarios', roles: ['admin'], d: ['M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2', 'M9 3.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8z', 'M19 8v6', 'M22 11h-6'] },
     ],
   },
@@ -38,9 +38,23 @@ const contrato = ref(null);
 // Los renglones que piden rol se le esconden a quien no lo tiene: le darían 403
 // al entrar. El API es el que manda —y el guardia del router tampoco los deja
 // abrir a mano—; esto sólo evita ofrecer lo que no se puede.
+//
+// Cobro pide 'proveedor', que no es rol: el administrador del cliente no lo ve
+// aunque sea administrador. Lo suyo —cuántas unidades y cuánto paga— está en
+// Mi cuenta.
+const visible = (i) => (i.proveedor ? esProveedor.value : true)
+  && (!i.roles || i.roles.includes(usuario.value?.rol));
+
 const menu = computed(() => MENU
-  .map((g) => ({ ...g, items: g.items.filter((i) => !i.roles || i.roles.includes(usuario.value?.rol)) }))
+  .map((g) => ({ ...g, items: g.items.filter(visible) }))
   .filter((g) => g.items.length > 0));
+
+// Lo que se lee abajo del nombre. 'proveedor' no está en la tabla, así que se
+// escribe aquí y no viene del rol.
+const etiquetaRol = computed(() => {
+  if (esProveedor.value) return 'Super administrador';
+  return { admin: 'Administrador', operador: 'Operador', consulta: 'Consulta' }[usuario.value?.rol] ?? '';
+});
 
 const reloj = ref('');
 let tic = null;
@@ -120,7 +134,7 @@ async function salir() {
           <div class="avatar">{{ iniciales }}</div>
           <div class="usuario-txt">
             <strong>{{ usuario?.nombre ?? '—' }}</strong>
-            <span>{{ usuario?.rol ?? '' }}</span>
+            <span>{{ etiquetaRol }}</span>
           </div>
         </router-link>
         <button class="salir" title="Cerrar sesión" @click="salir">

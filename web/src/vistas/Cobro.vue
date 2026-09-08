@@ -11,20 +11,12 @@ const aviso = ref('');
 const mxn = (n) => Number(n ?? 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
 const total = computed(() => calculo.value?.total ?? 0);
 
-// Al administrador del cliente el API le manda la respuesta recortada: trae
-// unidades, precio por unidad y total, y no trae cómo se arma. Esa ausencia es
-// la que decide qué se pinta —no hace falta preguntar quién está adentro—.
-const desglose = computed(() => calculo.value?.rentaBase !== undefined);
-
 async function cargar() {
   error.value = '';
   try {
     calculo.value = await api.get(`/cobro/periodo?periodo=${periodo.value}`);
+    margen.value = await api.get(`/cobro/margen?periodo=${periodo.value}`);
   } catch (e) { error.value = e.message; }
-  // El margen es sólo del proveedor —enseña lo que cuesta el servicio, no lo
-  // que se cobra—. Al administrador del cliente el API le contesta 403 y aquí
-  // el bloque simplemente no se pinta; el resto de la pantalla va igual.
-  try { margen.value = await api.get(`/cobro/margen?periodo=${periodo.value}`); } catch { margen.value = null; }
 }
 
 async function cerrar() {
@@ -42,11 +34,8 @@ onMounted(cargar);
 <template>
   <h2>Cobro</h2>
   <p class="sub">
-    Se cobra por <strong>vehículo</strong>. Una unidad que cubre 1, 2, 3 o 4 rutas
-    paga lo mismo: el número de rutas no entra en la cuenta.
-    <template v-if="!desglose">
-      La mensualidad cubre las unidades del contrato, se hayan monitoreado o no.
-    </template>
+    Pantalla interna del proveedor. Se cobra por <strong>vehículo</strong>: una unidad
+    que cubre 1, 2, 3 o 4 rutas paga lo mismo, el número de rutas no entra en la cuenta.
   </p>
 
   <div v-if="error" class="error">{{ error }}</div>
@@ -61,25 +50,15 @@ onMounted(cargar);
 
   <div v-if="calculo" class="tarjetas">
     <div class="tarjeta"><div class="n">{{ calculo.vehiculosActivos }}</div><div class="r">Vehículos activos</div></div>
-    <template v-if="!desglose">
-      <div class="tarjeta"><div class="n">{{ calculo.unidadesContratadas }}</div><div class="r">Unidades del contrato</div></div>
-      <div class="tarjeta">
-        <div class="n" style="font-size:19px">{{ mxn(calculo.precioUnitario) }}</div>
-        <div class="r">Precio por unidad</div>
-      </div>
-    </template>
-    <template v-if="desglose">
-      <div class="tarjeta"><div class="n">{{ calculo.incluidas }}</div><div class="r">Incluidos</div></div>
-      <div class="tarjeta"><div class="n">{{ calculo.adicionales }}</div><div class="r">Adicionales</div></div>
-      <div class="tarjeta"><div class="n" style="font-size:19px">{{ mxn(calculo.subtotal) }}</div><div class="r">Subtotal</div></div>
-    </template>
+    <div class="tarjeta"><div class="n">{{ calculo.incluidas }}</div><div class="r">Incluidos</div></div>
+    <div class="tarjeta"><div class="n">{{ calculo.adicionales }}</div><div class="r">Adicionales</div></div>
+    <div class="tarjeta"><div class="n" style="font-size:19px">{{ mxn(calculo.subtotal) }}</div><div class="r">Subtotal</div></div>
     <div class="tarjeta"><div class="n" style="font-size:19px">{{ mxn(total) }}</div><div class="r">Total con IVA</div></div>
   </div>
 
   <!-- El contrato cubre un número fijo de unidades y el archivo trae más.
        Este aviso es el argumento de venta: cuánto costaría cubrirlas todas.
-       Va sólo del lado del proveedor —es una cotización, y se platica, no se
-       deja suelta en la pantalla del cliente—. -->
+       Es una cotización y se platica; por eso vive aquí y no en Mi cuenta. -->
   <div v-if="calculo?.proyeccion" class="aviso amarillo">
     En el archivo de este periodo hay
     <strong>{{ calculo.proyeccion.vehiculosActivos }}</strong> unidades, pero el contrato
@@ -91,12 +70,9 @@ onMounted(cargar);
   <div v-if="calculo" class="aviso">
     <strong>{{ calculo.unidadesConVariasRutas }}</strong> unidades cubren más de una ruta
     ({{ calculo.rutasTotales }} rutas en total) y no generan ningún cargo adicional.
-    <template v-if="desglose">
-      Fórmula: {{ mxn(calculo.rentaBase) }} + {{ calculo.adicionales }} × {{ mxn(calculo.precioExtra) }}.
-    </template>
+    Fórmula: {{ mxn(calculo.rentaBase) }} + {{ calculo.adicionales }} × {{ mxn(calculo.precioExtra) }}.
   </div>
 
-  <!-- Pantalla interna: esto NO se le enseña al cliente. -->
   <div v-if="margen" class="tarjetas">
     <div class="tarjeta"><div class="n">{{ margen.plantillas }}</div><div class="r">Plantillas (con costo)</div></div>
     <div class="tarjeta verde"><div class="n">{{ margen.libres }}</div><div class="r">Libres (gratis)</div></div>

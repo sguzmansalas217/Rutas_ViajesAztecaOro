@@ -527,6 +527,15 @@ ol.canales li { margin-bottom: 6px; }
 .cuenta dt { color: var(--tenue); }
 .cuenta dd { margin: 0; font-weight: 600; word-break: break-word; }
 .cuenta dd.rol { text-transform: capitalize; }
+/* El pago del mes es el dato que se viene a buscar aquí: se lee de un vistazo
+   sin tener que rastrear el renglón. */
+.cuenta dd.importe { font-size: 20px; font-variant-numeric: tabular-nums; }
+
+/* Fijar las unidades del contrato: sólo lo ve el super administrador. Va
+   separado por una línea porque no es parte de lo que se lee arriba. */
+.cuenta .setear {
+  margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--borde);
+}
 
 .cuenta label {
   display: block; margin-bottom: 6px;

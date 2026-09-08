@@ -63,7 +63,11 @@ export default async function auth(app) {
 
   app.get('/yo', { preHandler: [app.autenticar] }, async (req) => {
     const u = await unaFila('SELECT id, correo, nombre, rol FROM usuario WHERE id = $1', [req.user.id]);
-    return { usuario: u };
+    // 'proveedor' no sale de la tabla: es el correo del .env. Viaja aquí porque
+    // el menú y el guardia del router necesitan saberlo, y preguntarlo por su
+    // cuenta significaría pegarle a una ruta protegida nada más para ver si
+    // contesta 403. No es la barrera —ésa está en cada ruta del API—.
+    return { usuario: { ...u, proveedor: esProveedor(req) } };
   });
 
   app.post('/clave', { preHandler: [app.autenticar] }, async (req, reply) => {

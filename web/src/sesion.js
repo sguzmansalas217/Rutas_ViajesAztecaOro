@@ -33,6 +33,12 @@ const rol = computed(() => usuario.value?.rol ?? null);
 
 export const esAdmin = computed(() => rol.value === 'admin');
 
+// El super administrador —el proveedor del servicio— no es un rol de la tabla:
+// es la cuenta del ADMIN_CORREO del .env. Por eso se lee de una bandera que
+// manda el API y no de usuario.rol. El cliente tiene su propio 'admin' y no
+// debe alcanzar los costos ni el precio con él.
+export const esProveedor = computed(() => usuario.value?.proveedor === true);
+
 // 'consulta' entra a mirar y nada más. Es el mismo corte que hace el API con
 // exigirRol('admin', 'operador').
 export const puedeEditar = computed(() => rol.value === 'admin' || rol.value === 'operador');
