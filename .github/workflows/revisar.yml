@@ -1,0 +1,41 @@
+# Revisión automática en cada push a main.
+#
+# Antes esto también desplegaba solo por SSH al droplet, pero los secretos
+# (SSH_LLAVE_PRIVADA, SSH_HOST, SSH_USUARIO) nunca se dieron de alta, así que
+# el paso reventaba en cada push y llegaba un correo de "Run failed" por un
+# despliegue que en realidad se hace a mano con ./desplegar.sh.
+#
+# Se quedó lo que sí sirve: que la sintaxis y las pruebas del dominio se
+# revisen antes de que uno se conecte al servidor a hacer git pull. Si algún
+# día se quiere el despliegue automático, se agrega un job con esos tres
+# secretos y se prueba con workflow_dispatch antes de dejarlo en push.
+name: Revisar
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  revisar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Sintaxis del API
+        run: |
+          cd app
+          for f in $(find src herramientas -name '*.js'); do node --check "$f"; done
+
+      # Las pruebas son del dominio puro —horarios, teléfonos, cobro— y no
+      # abren conexiones, pero los módulos que revisan importan db.js, y ése
+      # importa pg. Sin instalar no arrancan.
+      - name: Pruebas del dominio
+        run: cd app && npm ci --omit=dev --no-audit --no-fund && npm run prueba
+
+      - name: Compilar el portal
+        run: cd web && npm ci --no-audit --no-fund && npm run build
