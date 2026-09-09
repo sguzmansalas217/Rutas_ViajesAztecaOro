@@ -260,7 +260,7 @@ async function procesarMensaje(mensaje, valor) {
     'marcaje registrado',
   );
 
-  await acusarRecibo({ conductor, marcaje, semaforo, tieneUbicacion: latitud != null });
+  await acusarRecibo({ conductor, marcaje, semaforo, evaluacion, tieneUbicacion: latitud != null });
 }
 
 /**
@@ -334,19 +334,30 @@ async function pedirleLaUbicacion(conductor) {
  * mandar —si algún día abrirVentana fallara, un acuse por plantilla sería pagar
  * por decir "gracias"—.
  */
-async function acusarRecibo({ conductor, marcaje, semaforo, tieneUbicacion }) {
+async function acusarRecibo({ conductor, marcaje, semaforo, evaluacion, tieneUbicacion }) {
   try {
     if (await parametro('acuse.activo', true) !== true) return;
     if (await decidirCanal(conductor.id) !== 'libre') return;
 
-    const clave = marcaje.numero === 3 && !tieneUbicacion ? 'acuse.sin_ubicacion'
-      : marcaje.numero === 3 ? 'acuse.ubicacion'
-      : semaforo === 'amarillo' ? 'acuse.tarde'
-      : 'acuse.generico';
+    // El filtro tiene acuse propio según cómo haya quedado. Decirle "filtro
+    // registrado" a quien mandó la ubicación desde otro lado es peor que no
+    // contestarle: se va tranquilo con un marcaje en rojo.
+    //
+    // 'acuse.ubicacion' quedó para el caso en que no hay geocercas activas:
+    // ahí no se puede afirmar ni que está ni que no está.
+    const clave = marcaje.numero !== 3 ? (semaforo === 'amarillo' ? 'acuse.tarde' : 'acuse.generico')
+      : !tieneUbicacion ? 'acuse.sin_ubicacion'
+      : evaluacion?.dentro === true ? 'acuse.dentro'
+      : evaluacion?.dentro === false ? 'acuse.fuera'
+      : 'acuse.ubicacion';
 
     const cuerpo = interpolar(
       await parametro(clave, '✅ Registrado, {nombre}.'),
-      { nombre: (conductor.nombre ?? '').split(' ')[0] },
+      {
+        nombre: (conductor.nombre ?? '').split(' ')[0],
+        filtro: evaluacion?.nombre ?? '',
+        metros: evaluacion?.distanciaM != null ? Math.round(evaluacion.distanciaM) : '',
+      },
     );
 
     await enviarAConductor({
