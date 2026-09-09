@@ -51,20 +51,27 @@ export async function evaluarUbicacion(latitud, longitud) {
 /**
  * Semáforo del marcaje.
  *   verde    → respondió a tiempo (y si aplica geocerca, dentro)
- *   amarillo → respondió tarde, o fuera de la geocerca
- *   rojo     → no respondió dentro de la tolerancia
+ *   amarillo → respondió tarde
+ *   rojo     → no respondió, o el filtro lo mandó desde fuera del punto
  */
 export async function semaforoDe({ numero, respondidoEn, programadoPara, evaluacion }) {
   const tolerancia = Number(await parametro('marcaje.tolerancia_min', 15));
 
   if (!respondidoEn) return 'rojo';
 
+  // El marcaje 3 es el filtro/alcoholímetro: el único con geocerca validada.
+  // Va ANTES del retraso porque estar fuera es peor que llegar tarde: si se
+  // revisara después, un filtro mandado tarde y desde otra ciudad saldría
+  // amarillo por tarde y nadie vería lo de la ubicación.
+  //
+  // Sin geocercas dadas de alta (sinConfigurar) no se juzga: no hay contra qué
+  // comparar y pintar rojo a todos sería mentir.
+  if (numero === 3 && evaluacion && !evaluacion.sinConfigurar && evaluacion.dentro === false) {
+    return 'rojo';
+  }
+
   const retrasoMin = (new Date(respondidoEn) - new Date(programadoPara)) / 60_000;
   if (retrasoMin > tolerancia) return 'amarillo';
 
-  // El marcaje 3 es el filtro/alcoholímetro: es el único con geocerca validada.
-  if (numero === 3 && evaluacion && !evaluacion.sinConfigurar && evaluacion.dentro === false) {
-    return 'amarillo';
-  }
   return 'verde';
 }

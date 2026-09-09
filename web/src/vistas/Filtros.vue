@@ -101,8 +101,9 @@ onMounted(cargar);
   <h2>Filtros</h2>
   <p class="sub">
     Los puntos donde el conductor tiene que estar cuando comparte su ubicación
-    en el marcaje 3. Si cae dentro del radio el marcaje sale verde; si cae fuera,
-    amarillo.
+    en el marcaje 3. Se compara contra todos los filtros activos y gana el más
+    cercano: dentro del radio sale <strong>verde</strong>, fuera sale
+    <strong>rojo</strong>. Si no hay ninguno activo no se compara nada.
   </p>
 
   <div v-if="error" class="error">{{ error }}</div>
@@ -214,7 +215,7 @@ onMounted(cargar);
         <td class="tenue-txt">{{ u.latitud }}, {{ u.longitud }}</td>
         <td>
           <span v-if="u.dentro_geocerca === true" class="chip verde">dentro · {{ Math.round(u.distancia_m) }} m</span>
-          <span v-else-if="u.dentro_geocerca === false" class="chip amarillo">fuera · {{ Math.round(u.distancia_m) }} m</span>
+          <span v-else-if="u.dentro_geocerca === false" class="chip rojo">fuera · {{ Math.round(u.distancia_m) }} m</span>
           <span v-else class="tenue-txt">sin filtro que comparar</span>
         </td>
         <td v-if="puedeEditar">

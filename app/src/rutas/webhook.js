@@ -161,7 +161,40 @@ async function procesarMensaje(mensaje, valor) {
   //
   // 'enviado_en IS NOT NULL' es la condición honesta: sólo se puede responder lo
   // que ya salió. Y de haber dos abiertos, el que vale es el más reciente.
-  const marcaje = await unaFila(
+  //
+  // ⚑ Excepción: la UBICACIÓN sí puede llegar antes de la pregunta.
+  //   El conductor llega al filtro y manda su ubicación sin esperar a que el
+  //   sistema se la pida. Con la regla de arriba eso se perdía —o peor, se
+  //   contaba como respuesta del marcaje anterior que siguiera abierto— y
+  //   minutos después le llegaba igual la petición de algo que ya hizo.
+  //
+  //   Aquí no hay el riesgo que motivó la regla: no se está dando por bueno un
+  //   "sí" cualquiera, se está recibiendo la prueba misma —el punto donde está—
+  //   y esa prueba se juzga contra la geocerca igual que si la hubiéramos
+  //   pedido. La ventana es hacia adelante nada más hasta el filtro del día.
+  let marcaje = null;
+
+  if (latitud != null) {
+    marcaje = await unaFila(
+      `SELECT m.id, m.numero, m.programado_para, m.enviado_en
+         FROM marcaje m
+         JOIN asignacion a ON a.id = m.asignacion_id
+        WHERE a.conductor_id = $1
+          AND m.numero = 3
+          AND m.respondido_en IS NULL
+          AND m.estado IN ('pendiente', 'enviado')
+          AND a.estado = 'programada'
+          AND m.programado_para BETWEEN now() - interval '4 hours'
+                                    AND now() + interval '6 hours'
+        ORDER BY m.programado_para
+        LIMIT 1`,
+      [conductor.id],
+    );
+  }
+
+  const adelantado = Boolean(marcaje && !marcaje.enviado_en);
+
+  marcaje ??= await unaFila(
     `SELECT m.id, m.numero, m.programado_para
        FROM marcaje m
        JOIN asignacion a ON a.id = m.asignacion_id
@@ -193,20 +226,26 @@ async function procesarMensaje(mensaje, valor) {
   // verdad: hubo respuesta y no hubo comprobación.
   if (marcaje.numero === 3 && latitud == null) semaforo = 'amarillo';
 
+  // Al adelantado no se le pone enviado_en: nunca se le preguntó, y esa fecha
+  // es la evidencia de cuándo salió el mensaje. Queda dicho en la nota. Con
+  // estado='respondido' el trabajador ya no se lo manda —su tic sólo toma los
+  // 'pendiente'—, que es justo lo que se quiere: llegó, avisó, no se le
+  // molesta más.
   await consultar(
     `UPDATE marcaje
         SET estado = 'respondido', respondido_en = now(), fuente = 'whatsapp',
             respuesta = $2, latitud = $3, longitud = $4,
             geocerca_id = $5, distancia_m = $6, dentro_geocerca = $7,
-            semaforo = $8
+            semaforo = $8, nota = COALESCE(nota, $9)
       WHERE id = $1`,
     [marcaje.id, texto, latitud, longitud,
      evaluacion?.geocercaId ?? null, evaluacion?.distanciaM ?? null,
-     evaluacion?.dentro ?? null, semaforo],
+     evaluacion?.dentro ?? null, semaforo,
+     adelantado ? 'El conductor mandó su ubicación antes de que se le pidiera' : null],
   );
 
   log.info(
-    { conductor: conductor.nombre, marcaje: marcaje.numero, semaforo, ubicacion: Boolean(latitud) },
+    { conductor: conductor.nombre, marcaje: marcaje.numero, semaforo, ubicacion: Boolean(latitud), adelantado },
     'marcaje registrado',
   );
 
