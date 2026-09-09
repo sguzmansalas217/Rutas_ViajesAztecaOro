@@ -17,7 +17,17 @@ import { consultar, unaFila, parametro } from '../db.js';
 import { log } from '../log.js';
 import { abrirVentana, decidirCanal } from '../dominio/ventana.js';
 import { evaluarUbicacion, semaforoDe } from '../dominio/geocerca.js';
-import { enviarAConductor } from '../infra/whatsapp.js';
+import { enviarAConductor, pedirUbicacion } from '../infra/whatsapp.js';
+
+/**
+ * Frases con las que el conductor avisa POR ESCRITO que ya llegó al filtro.
+ *
+ * No se pretende adivinarlas todas ni hace falta: si el texto no cae en
+ * ninguna, a su hora le llega igual la petición de ubicación y no se pierde
+ * nada. Se prefiere quedarse corto a contestarle "manda tu ubicación" a un
+ * "gracias".
+ */
+const AVISA_QUE_LLEGO = /alcoholim|alcohol[íi]m|filtro|ya lleg|ya estoy|aqu[íi] estoy/i;
 
 /**
  * Formas equivalentes de un mismo celular mexicano.
@@ -208,6 +218,7 @@ async function procesarMensaje(mensaje, valor) {
   );
   if (!marcaje) {
     log.info({ conductor: conductor.nombre }, 'respuesta sin marcaje pendiente (ventana abierta de todos modos)');
+    if (texto && AVISA_QUE_LLEGO.test(texto)) await pedirleLaUbicacion(conductor);
     return;
   }
 
@@ -250,6 +261,65 @@ async function procesarMensaje(mensaje, valor) {
   );
 
   await acusarRecibo({ conductor, marcaje, semaforo, tieneUbicacion: latitud != null });
+}
+
+/**
+ * El conductor escribió que ya está en el filtro.
+ *
+ * El texto no prueba nada —lo mismo se escribe desde su casa—, así que el
+ * marcaje NO se da por cumplido: se le pide la ubicación, que es lo único que
+ * se puede comparar contra la geocerca. Cuando la mande entra por el camino de
+ * la ubicación adelantada y ahí sí cuenta.
+ *
+ * Quedarse callado sería lo peor de los dos mundos: avisó, no pasó nada
+ * visible, y veinte minutos después le llega la petición de algo que él ya da
+ * por hecho.
+ *
+ * Nunca cuesta: acaba de escribir, así que la ventana está abierta.
+ */
+async function pedirleLaUbicacion(conductor) {
+  try {
+    const m = await unaFila(
+      `SELECT m.id, r.nombre AS ruta
+         FROM marcaje m
+         JOIN asignacion a ON a.id = m.asignacion_id
+         JOIN ruta r ON r.id = a.ruta_id
+        WHERE a.conductor_id = $1
+          AND m.numero = 3
+          AND m.respondido_en IS NULL
+          AND m.estado IN ('pendiente', 'enviado')
+          AND a.estado = 'programada'
+          AND m.programado_para BETWEEN now() - interval '4 hours'
+                                    AND now() + interval '6 hours'
+          -- Si ya se le pidió hace poco no se le repite. Sin esto, tres
+          -- mensajes seguidos suyos le devuelven tres peticiones iguales.
+          AND NOT EXISTS (
+            SELECT 1 FROM mensaje_saliente s
+             WHERE s.marcaje_id = m.id
+               AND s.enviado_en > now() - interval '10 minutes'
+          )
+        ORDER BY m.programado_para
+        LIMIT 1`,
+      [conductor.id],
+    );
+    if (!m) return;
+    if (await decidirCanal(conductor.id) !== 'libre') return;
+
+    const cuerpo = interpolar(
+      await parametro('texto.marcaje3', '📍 {nombre}, comparte tu ubicación para registrar el filtro.'),
+      { nombre: (conductor.nombre ?? '').split(' ')[0], ruta: m.ruta },
+    );
+
+    await pedirUbicacion({
+      conductorId: conductor.id,
+      telefono: conductor.telefono_e164,
+      texto: cuerpo,
+      marcajeId: m.id,
+    });
+    log.info({ conductor: conductor.nombre, marcaje: m.id }, 'avisó por texto: se le pidió la ubicación');
+  } catch (e) {
+    log.warn({ err: e, conductor: conductor.nombre }, 'no se pudo pedir la ubicación');
+  }
 }
 
 /**
