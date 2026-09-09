@@ -24,6 +24,7 @@
 //     --nota       ""
 //     --encargado  GERARDO
 //     --dia        2026-09-04         día que se llena    (por omisión hoy)
+//     --desfases   "0,10,-20,0"       sólo para el resumen que se imprime abajo
 //     --salida     archivo.xlsx
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -143,16 +144,26 @@ await writeFile(salida, Buffer.from(await libro.xlsx.writeBuffer()));
 // ── Qué va a pasar ──────────────────────────────────────────────────────────
 // La hoja MAÑANA no trae columna de salida, así que los marcajes 3 y 4 cuelgan
 // de hora_monitoreo + 40 min (ver dominio/programacion.js).
+//
+// Los desfases se pueden cambiar desde el portal (pantalla Tiempos), y este
+// archivo no habla con la base. Si se cambiaron, se le pasan con --desfases
+// para que lo impreso aquí abajo coincida con lo que va a pasar de verdad.
 const enMin = (n) => `${dosDig(Math.floor(n / 60) % 24)}:${dosDig(n % 60)}`;
 const base = hh * 60 + mi;
+
+const d = String(opt('desfases', '0,10,-20,0')).split(',').map(Number);
+if (d.length !== 4 || d.some(Number.isNaN)) {
+  console.error('--desfases espera cuatro números: "0,10,-20,0" (1 y 2 desde monitoreo, 3 y 4 desde la salida).');
+  process.exit(1);
+}
 
 console.log(`\nEscrito: ${path.resolve(salida)}`);
 console.log(`Semana ${iso(lunes)} → ${iso(new Date(lunes.getTime() + 6 * 86400000))}`);
 console.log(`Ruta "${nombreRuta}" el ${DIAS[indiceHoy]} ${iso(hoy)} a las ${horaTexto}, con ${conductor}.`);
 console.log(`Hoja TELEFONOS: ${soloNombre} · unidad ${unidad} · ${telefono}`);
-console.log(`\nCon los desfases de producción los marcajes salen a las:`);
-console.log(`   1 despertar   ${enMin(base)}`);
-console.log(`   2 revisión    ${enMin(base + 10)}`);
-console.log(`   3 filtro      ${enMin(base + 20)}   (salida − 20)`);
-console.log(`   4 salida      ${enMin(base + 40)}`);
+console.log(`\nCon los desfases ${d.join(', ')} los marcajes salen a las:`);
+console.log(`   1 despertar   ${enMin(base + d[0])}`);
+console.log(`   2 revisión    ${enMin(base + d[1])}`);
+console.log(`   3 filtro      ${enMin(base + 40 + d[2])}`);
+console.log(`   4 salida      ${enMin(base + 40 + d[3])}`);
 console.log(`\nSúbelo en Cargar Excel y pon el tablero en ${iso(hoy)}.`);

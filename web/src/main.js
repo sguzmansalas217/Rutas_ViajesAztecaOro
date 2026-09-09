@@ -21,6 +21,7 @@ const rutas = [
   { path: '/unidades', component: () => import('./vistas/Unidades.vue') },
   { path: '/carga', component: () => import('./vistas/Carga.vue'), meta: { roles: ['admin', 'operador'] } },
   { path: '/filtros', component: () => import('./vistas/Filtros.vue') },
+  { path: '/tiempos', component: () => import('./vistas/Tiempos.vue'), meta: { roles: ['admin'] } },
   { path: '/alertas', component: () => import('./vistas/Alertas.vue'), meta: { roles: ['admin'] } },
   { path: '/cobro', component: () => import('./vistas/Cobro.vue'), meta: { proveedor: true } },
   { path: '/usuarios', component: () => import('./vistas/Usuarios.vue'), meta: { roles: ['admin'] } },
