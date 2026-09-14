@@ -273,26 +273,43 @@ async function procesarMensaje(mensaje, valor) {
 
     //   Y el caso normal de la salida: el botón «Ya salí» ya cerró el marcaje y
     //   el punto llega detrás. No hay marcaje abierto al que amarrarlo, así que
-    //   sin esto se perdía. Se le pega al que se acaba de cerrar y no se toca
-    //   nada más —ni el semáforo ni la hora—: la salida la registró el botón,
-    //   esto sólo dice desde dónde.
+    //   sin esto se perdía. Se le pega al que se acaba de cerrar.
+    //
+    //   La hora no se toca: la salida la registró el botón y ésa es la hora
+    //   buena. El semáforo sí, y sólo en un sentido —quitarle el amarillo que
+    //   traía por faltarle el punto—. Es lo que hace que la ubicación sea
+    //   obligatoria de verdad: mientras no llegue, el día no cierra en verde.
     if (!marcaje) {
       const salida = await unaFila(
-        `UPDATE marcaje SET latitud = $2, longitud = $3
-          WHERE id = (SELECT m.id
-                        FROM marcaje m
-                        JOIN asignacion a ON a.id = m.asignacion_id
-                       WHERE a.conductor_id = $1
-                         AND m.numero = 4
-                         AND m.latitud IS NULL
-                         AND m.respondido_en > now() - interval '30 minutes'
-                       ORDER BY m.respondido_en DESC
-                       LIMIT 1)
-          RETURNING id`,
-        [conductor.id, latitud, longitud],
+        `SELECT m.id, m.numero, m.programado_para, m.respondido_en, m.alertado_en
+           FROM marcaje m
+           JOIN asignacion a ON a.id = m.asignacion_id
+          WHERE a.conductor_id = $1
+            AND m.numero = 4
+            AND m.latitud IS NULL
+            AND m.respondido_en > now() - interval '30 minutes'
+          ORDER BY m.respondido_en DESC
+          LIMIT 1`,
+        [conductor.id],
       );
       if (salida) {
-        log.info({ conductor: conductor.nombre, marcaje: salida.id }, 'ubicación de salida guardada');
+        // Se recalcula con la hora en que contestó el botón, no con ahora: lo
+        // que se juzga es la puntualidad de la salida, y ésa ya ocurrió. Sin
+        // geocerca, que es el punto de todo esto —no hay filtro contra el cual
+        // estar lejos, la ruta arranca donde arranca—.
+        let semaforo = await semaforoDe({
+          numero: 4,
+          respondidoEn: salida.respondido_en,
+          programadoPara: salida.programado_para,
+          evaluacion: null,
+        });
+        if (salida.alertado_en && semaforo === 'verde') semaforo = 'amarillo';
+
+        await consultar(
+          'UPDATE marcaje SET latitud = $2, longitud = $3, semaforo = $4 WHERE id = $1',
+          [salida.id, latitud, longitud, semaforo],
+        );
+        log.info({ conductor: conductor.nombre, marcaje: salida.id, semaforo }, 'ubicación de salida guardada');
         await acusar(conductor, 'acuse.ubicacion_salida', '📍 Anotado, {nombre}.', salida.id);
         return;
       }
@@ -367,6 +384,27 @@ async function procesarMensaje(mensaje, valor) {
   // por un celular que no comparte ubicación—, pero en amarillo, que es la
   // verdad: hubo respuesta y no hubo comprobación.
   if (marcaje.numero === 3 && latitud == null) semaforo = 'amarillo';
+
+  // La salida, igual, aunque por otro motivo.
+  //
+  // El punto de la salida no se compara contra nada y aun así se exige: es el
+  // único dato que dice desde dónde arrancó la unidad, y cuando el cliente
+  // reclama un retraso de hace tres días es lo que se enseña. Un botón sin
+  // punto no lo prueba —se toca desde donde sea—.
+  //
+  // Bloquear el marcaje hasta que llegue sería peor: se perdería «la ruta
+  // salió», que es el dato más importante del día y que sí sabemos. Así que se
+  // registra la salida y se deja en amarillo, y el punto —cuando llegue, arriba
+  // en el camino de la ubicación— se lo levanta. Obligatorio sin ser un
+  // candado: sin ubicación el día no cierra en verde, pero nada se pierde.
+  //
+  // Va atado a que la petición esté encendida: castigar por un punto que nunca
+  // se pidió sería dejar amarillo todo el día sin decirle a nadie por qué.
+  if (marcaje.numero === 4 && latitud == null
+      && await parametro('ubicacion_salida.activo', true) === true
+      && await parametro('ubicacion_salida.obligatoria', true) === true) {
+    semaforo = 'amarillo';
+  }
 
   // «Hay una falla» sí es una respuesta, pero no es un sí. En verde se perdería
   // entre los demás y nadie se enteraría de la unidad averiada; en amarillo se

@@ -91,6 +91,11 @@ function comoQuedo(m) {
     // Sin geocercas dadas de alta no se puede afirmar ni que estaba ni que no.
     return m.semaforo === 'verde' ? 'mandó ubicación' : 'tarde';
   }
+  // La salida sin punto también es amarilla, y no por la hora. Decir «tarde» de
+  // un conductor que contestó al minuto lo manda a discutir la hora equivocada.
+  if (m.numero === 4 && !m.ubicacion && m.semaforo === 'amarillo') {
+    return 'salió, pero falta la ubicación de salida';
+  }
   return m.semaforo === 'verde' ? 'a tiempo' : 'tarde';
 }
 
@@ -204,7 +209,7 @@ function estatus(a) {
   // Y por lo mismo se separan éstos: «no mandó la ubicación» no es un retraso,
   // y contarlo como tal manda al monitorista a reclamarle una hora al conductor
   // que sí contestó a tiempo.
-  const sinPunto = amarillos.filter((x) => x.m.numero === 3 && !x.m.ubicacion);
+  const sinPunto = amarillos.filter((x) => (x.m.numero === 3 || x.m.numero === 4) && !x.m.ubicacion);
   const tarde = amarillos.filter((x) => !sinPunto.includes(x));
 
   if (rojos.length) {

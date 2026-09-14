@@ -45,6 +45,7 @@ function quePaso(e) {
   if (e.fuente === 'manual') return e.nota || 'registrado a mano, sin nota';
   if (e.respondido_en) {
     if (e.numero === 3 && e.latitud == null) return 'contestó, pero no mandó la ubicación';
+    if (e.numero === 4 && e.latitud == null) return 'salió, pero falta la ubicación de salida';
     if (e.dentro_geocerca === true) return `en el filtro${e.geocerca ? ` ${e.geocerca}` : ''}`;
     if (e.dentro_geocerca === false) {
       return `fuera del filtro${e.geocerca ? ` ${e.geocerca}` : ''}, a ${metros(e.distancia_m)}`;
