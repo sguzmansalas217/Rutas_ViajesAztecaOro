@@ -55,6 +55,16 @@ function marcaje(a, n) {
 function color(a, n) {
   return marcaje(a, n)?.semaforo ?? 'ninguno';
 }
+
+// Amarillo quiere decir dos cosas muy distintas: «contestó, pero tarde» y «no
+// contestó, hubo que hablarle». El color es el mismo a propósito —las dos son
+// la ruta resuelta a medias—, pero el teléfono las separa de un vistazo. Sin
+// esto el tablero decía «2 fuera de tiempo» de dos marcajes que no llegaron
+// tarde: nunca llegaron.
+function simbolo(a, n) {
+  const m = marcaje(a, n);
+  return m?.fuente === 'manual' ? '☎' : SIMBOLO[color(a, n)];
+}
 function colores(a) {
   return [1, 2, 3, 4].map((n) => color(a, n));
 }
@@ -150,7 +160,11 @@ function estatus(a) {
   const pendientes = lista.filter(
     (x) => !x.m.respondido && x.m.semaforo !== 'rojo' && x.m.estado !== 'cancelado',
   );
-  const tarde = lista.filter((x) => x.m.semaforo === 'amarillo');
+  // Se cuentan aparte: «contestó tarde» es del conductor, «hubo que hablarle»
+  // es del monitorista, y meterlos en el mismo saco borra el trabajo que costó
+  // sacar la ruta —que es justo lo que hay que poder ver a fin de mes—.
+  const manuales = lista.filter((x) => x.m.fuente === 'manual');
+  const tarde = lista.filter((x) => x.m.semaforo === 'amarillo' && x.m.fuente !== 'manual');
 
   if (rojos.length) {
     const { d } = rojos[rojos.length - 1];
@@ -170,6 +184,15 @@ function estatus(a) {
     };
   }
   if (!pendientes.length) {
+    if (manuales.length) {
+      const otros = tarde.length ? ` y ${tarde.length} fuera de tiempo` : '';
+      return {
+        clase: 'amarillo',
+        texto: manuales.length === lista.length ? 'Completa por teléfono' : 'Completa con llamadas',
+        resumen: `La ruta salió, pero ${manuales.length === 1 ? 'un marcaje se resolvió' : `${manuales.length} marcajes se resolvieron`} hablándole al conductor${otros}, no por WhatsApp. Si se repite, el problema es del conductor y no del sistema.`,
+        lineas,
+      };
+    }
     return tarde.length
       ? {
           clase: 'amarillo',
@@ -350,7 +373,7 @@ onUnmounted(() => clearInterval(temporizador));
             :class="[color(a, n), { tocable: puedeEditar && registrable(marcaje(a, n)) }]"
             :title="titulo(a, n)"
             @click="abrirRegistro(a, n)"
-          >{{ SIMBOLO[color(a, n)] }}</span>
+          >{{ simbolo(a, n) }}</span>
         </td>
         <td class="tenue-txt">{{ a.encargado ?? '—' }}</td>
       </tr>
