@@ -6,9 +6,14 @@
 //  para poder ajustarlos sin tocar código cuando la operación lo pida.
 //
 //      1  despertar      hora_monitoreo            (plantilla, abre la ventana)
-//      2  revisión       +10 min                   (libre, gratis)
+//      2  revisión       marcaje 1 + 10 min        (libre, gratis)
 //      3  filtro         hora_salida − 20 min      (pide ubicación)
 //      4  salida         hora_salida               (libre, gratis)
+//
+//  El 2 se cuenta desde el 1 y no desde la hora de monitoreo. Con el despertar
+//  en 0 da lo mismo, pero en cuanto se mueve el despertar deja de darlo: antes
+//  se podía dejar la revisión ANTES del despertar sin darse cuenta, y al
+//  conductor le llegaban las preguntas al revés.
 //
 //  Sólo se programan asignaciones en estado 'programada': si falta el teléfono
 //  la asignación está 'por_resolver' y no genera marcajes ni gasto.
@@ -18,16 +23,27 @@ import { log } from '../log.js';
 
 const ZONA = process.env.TZ || 'America/Mexico_City';
 
+/**
+ * Los cuatro desfases ya resueltos, en minutos, listos para la consulta.
+ *
+ * El 2 se guarda como «minutos después del despertar», así que aquí se le suma
+ * el del 1: la consulta los cuenta todos desde la misma base.
+ */
+export function desfasesDe(p) {
+  const uno = Number(p['marcaje1.desfase_min'] ?? 0);
+  return {
+    1: uno,
+    2: uno + Number(p['marcaje2.retraso_min'] ?? 10),
+    3: Number(p['marcaje3.desfase_min'] ?? -20), // relativo a la hora de salida
+    4: Number(p['marcaje4.desfase_min'] ?? 0),   // relativo a la hora de salida
+  };
+}
+
 export async function programarSemana(desde, hasta) {
   if (!desde || !hasta) return 0;
   const p = await parametros();
 
-  const desfases = {
-    1: Number(p['marcaje1.desfase_min'] ?? 0),
-    2: Number(p['marcaje2.retraso_min'] ?? 10),
-    3: Number(p['marcaje3.desfase_min'] ?? -20), // relativo a la hora de salida
-    4: Number(p['marcaje4.desfase_min'] ?? 0),   // relativo a la hora de salida
-  };
+  const desfases = desfasesDe(p);
 
   // Los marcajes 1 y 2 cuelgan de hora_monitoreo; los 3 y 4 de hora_salida
   // (si la ruta no trae salida, se usa hora_monitoreo + 40/60 min).
@@ -68,6 +84,7 @@ export async function programarSemana(desde, hasta) {
 export async function programarVarias(ids) {
   if (!ids?.length) return 0;
   const p = await parametros();
+  const d = desfasesDe(p);
   const r = await consultar(
     `INSERT INTO marcaje (asignacion_id, numero, programado_para, estado)
      SELECT a.id, n.numero,
@@ -81,9 +98,7 @@ export async function programarVarias(ids) {
        CROSS JOIN (VALUES (1, $3::int), (2, $4::int), (3, $5::int), (4, $6::int)) AS n(numero, desfase)
       WHERE a.id = ANY($1::int[]) AND a.estado = 'programada'
      ON CONFLICT (asignacion_id, numero) DO NOTHING`,
-    [ids.map(Number), ZONA,
-     Number(p['marcaje1.desfase_min'] ?? 0), Number(p['marcaje2.retraso_min'] ?? 10),
-     Number(p['marcaje3.desfase_min'] ?? -20), Number(p['marcaje4.desfase_min'] ?? 0)],
+    [ids.map(Number), ZONA, d[1], d[2], d[3], d[4]],
   );
   return r.rowCount;
 }

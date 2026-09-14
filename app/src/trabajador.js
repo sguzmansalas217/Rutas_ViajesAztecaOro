@@ -18,7 +18,7 @@ import IORedis from 'ioredis';
 import { config } from './config.js';
 import { log } from './log.js';
 import { filas, consultar, unaFila, parametro, pool } from './db.js';
-import { enviarAConductor, pedirUbicacion, enviarAviso } from './infra/whatsapp.js';
+import { enviarAConductor, enviarAviso } from './infra/whatsapp.js';
 
 const conexion = new IORedis(config.redis.url, { maxRetriesPerRequest: null });
 const colaEnvios = new Queue('envios', { connection: conexion });
@@ -144,20 +144,44 @@ const trabajadorEnvios = new Worker(
       hora: String(m.hora_monitoreo ?? '').slice(0, 5),
     };
 
+    // El filtro ya no pide la ubicación de golpe: primero pregunta si llegó.
+    // Cuando sale, el conductor muchas veces va todavía en camino, y el botón
+    // nativo de ubicación en ese momento sólo sirve para mandar el punto
+    // equivocado. Al tocar «Ya llegué» se le pide la ubicación (webhook.js).
     if (m.numero === 3) {
-      const t = texto(await parametro('texto.marcaje3', 'Comparte tu ubicación.'), datos);
-      return pedirUbicacion({
-        conductorId: m.conductor_id, telefono: m.telefono_e164, texto: t, marcajeId: m.id,
+      const t = texto(await parametro('texto.marcaje3_llegada', '{nombre}, ¿ya llegaste al filtro?'), datos);
+      return enviarAConductor({
+        conductorId: m.conductor_id,
+        telefono: m.telefono_e164,
+        texto: t,
+        variables: [datos.nombre, datos.ruta, datos.hora],
+        marcajeId: m.id,
+        botones: [{ id: `m3-llegue-${m.id}`, titulo: String(await parametro('boton.marcaje3_llegue', 'Ya llegué 📍')) }],
       });
     }
 
     const t = texto(await parametro(`texto.marcaje${m.numero}`, 'Confirma por favor.'), datos);
 
-    // Botones sólo en el marcaje 1: hacen que conteste de un toque y con eso
-    // abre la ventana de 24 h. Los marcajes 2, 3 y 4 del día salen gratis.
-    const botones = m.numero === 1
-      ? [{ id: `m1-si-${m.id}`, titulo: 'Listo ✅' }, { id: `m1-no-${m.id}`, titulo: 'Problema' }]
-      : null;
+    // El despertar va sin botones a propósito: casi siempre sale por plantilla
+    // —a esa hora nadie tiene ventana abierta— y los botones de una plantilla
+    // se definen en Meta, no aquí, así que ponerlos sólo servía el día que la
+    // ventana ya estaba abierta. Se contesta escribiendo.
+    //
+    // Donde sí sirven es en el 2 y el 4, que salen con el conductor despierto y
+    // muchas veces al volante: un toque es la diferencia entre que conteste y
+    // que no. Y no cuestan: para entonces la ventana está abierta.
+    let botones = null;
+    if (m.numero === 2) {
+      botones = [
+        { id: `m2-si-${m.id}`, titulo: String(await parametro('boton.marcaje2_si', 'Todo bien ✅')) },
+        { id: `m2-no-${m.id}`, titulo: String(await parametro('boton.marcaje2_no', 'Hay una falla')) },
+      ];
+    } else if (m.numero === 4) {
+      // Un solo botón. Uno de «todavía no» sería una respuesta que cierra el
+      // marcaje diciendo que no salió: si no ha salido, lo honesto es que se
+      // quede abierto y se ponga en rojo.
+      botones = [{ id: `m4-si-${m.id}`, titulo: String(await parametro('boton.marcaje4_si', 'Ya salí 🚌')) }];
+    }
 
     return enviarAConductor({
       conductorId: m.conductor_id,

@@ -30,6 +30,17 @@ import { enviarAConductor, pedirUbicacion } from '../infra/whatsapp.js';
 const AVISA_QUE_LLEGO = /alcoholim|alcohol[íi]m|filtro|ya lleg|ya estoy|aqu[íi] estoy/i;
 
 /**
+ * Frases con las que el conductor avisa que ya arrancó la ruta (marcaje 4).
+ *
+ * Se revisa ANTES que AVISA_QUE_LLEGO porque las dos se pisan: «ya estoy en
+ * ruta» cae en las dos y lo que quiere decir es que ya salió, no que llegó al
+ * filtro. Aquí sí se da el marcaje por cumplido —a diferencia del filtro, que
+ * exige la ubicación— porque no hay nada que comprobar: la salida es un dato
+ * que sólo él tiene.
+ */
+const SALIO_A_RUTA = /inicio (de )?ruta|ya (me )?sal[íi]|ya voy en ruta|ya estoy en ruta|arranqu[eé]|ya sali[oó]/i;
+
+/**
  * Formas equivalentes de un mismo celular mexicano.
  *
  * Meta entrega el remitente como 521 + 10 dígitos (el '1' de móvil), pero el
@@ -127,6 +138,10 @@ async function procesarMensaje(mensaje, valor) {
     ?? mensaje.interactive?.button_reply?.title
     ?? mensaje.button?.text
     ?? null;
+
+  // El identificador del botón, que es lo que dice QUÉ botón tocó. El título
+  // no sirve para eso: es la etiqueta que se ve, y se cambia desde el portal.
+  const botonId = mensaje.interactive?.button_reply?.id ?? mensaje.button?.payload ?? null;
   const latitud = mensaje.location?.latitude ?? null;
   const longitud = mensaje.location?.longitude ?? null;
 
@@ -160,6 +175,15 @@ async function procesarMensaje(mensaje, valor) {
   // ⚑ Lo primero y más importante: el conductor escribió, la ventana de 24 h
   //   queda abierta y todo lo que le mandemos hoy sale gratis.
   await abrirVentana(conductor.id, new Date(Number(mensaje.timestamp ?? Date.now() / 1000) * 1000));
+
+  // ⚑ El botón «Ya llegué» del filtro NO cierra el marcaje: lo único que
+  //   cuenta ahí es la ubicación. Se le pide y se sale; cuando la mande entra
+  //   por el camino de abajo y ahí sí se registra.
+  const tocoLlegue = botonId?.match(/^m3-llegue-(\d+)$/);
+  if (tocoLlegue) {
+    await pedirleLaUbicacion(conductor, { marcajeId: Number(tocoLlegue[1]) });
+    return;
+  }
 
   // ¿A qué marcaje contesta? Al último que se le PREGUNTÓ y sigue sin respuesta.
   //
@@ -202,6 +226,35 @@ async function procesarMensaje(mensaje, valor) {
     );
   }
 
+  //   Lo mismo pero por escrito: «ya llegué al alcoholímetro». Va antes de la
+  //   regla general a propósito. Si se dejara caer abajo, ese texto cerraría el
+  //   marcaje que estuviera abierto en ese momento —la revisión, por ejemplo—
+  //   y nadie le pediría nunca la ubicación del filtro.
+  if (!marcaje && texto && !SALIO_A_RUTA.test(texto) && AVISA_QUE_LLEGO.test(texto)) {
+    if (await pedirleLaUbicacion(conductor)) return;
+  }
+
+  //   Y el aviso de que ya arrancó, que también puede llegar antes de que se
+  //   pregunte. Aquí no hay nada que comprobar contra un mapa, así que el
+  //   marcaje sí se da por cumplido.
+  if (!marcaje && texto && SALIO_A_RUTA.test(texto)) {
+    marcaje = await unaFila(
+      `SELECT m.id, m.numero, m.programado_para, m.enviado_en
+         FROM marcaje m
+         JOIN asignacion a ON a.id = m.asignacion_id
+        WHERE a.conductor_id = $1
+          AND m.numero = 4
+          AND m.respondido_en IS NULL
+          AND m.estado IN ('pendiente', 'enviado')
+          AND a.estado = 'programada'
+          AND m.programado_para BETWEEN now() - interval '4 hours'
+                                    AND now() + interval '6 hours'
+        ORDER BY m.programado_para
+        LIMIT 1`,
+      [conductor.id],
+    );
+  }
+
   const adelantado = Boolean(marcaje && !marcaje.enviado_en);
 
   marcaje ??= await unaFila(
@@ -218,7 +271,6 @@ async function procesarMensaje(mensaje, valor) {
   );
   if (!marcaje) {
     log.info({ conductor: conductor.nombre }, 'respuesta sin marcaje pendiente (ventana abierta de todos modos)');
-    if (texto && AVISA_QUE_LLEGO.test(texto)) await pedirleLaUbicacion(conductor);
     return;
   }
 
@@ -237,6 +289,11 @@ async function procesarMensaje(mensaje, valor) {
   // verdad: hubo respuesta y no hubo comprobación.
   if (marcaje.numero === 3 && latitud == null) semaforo = 'amarillo';
 
+  // «Hay una falla» sí es una respuesta, pero no es un sí. En verde se perdería
+  // entre los demás y nadie se enteraría de la unidad averiada; en amarillo se
+  // ve en el tablero y la respuesta queda escrita en el detalle.
+  if (botonId?.startsWith('m2-no-')) semaforo = 'amarillo';
+
   // Al adelantado no se le pone enviado_en: nunca se le preguntó, y esa fecha
   // es la evidencia de cuándo salió el mensaje. Queda dicho en la nota. Con
   // estado='respondido' el trabajador ya no se lo manda —su tic sólo toma los
@@ -252,7 +309,9 @@ async function procesarMensaje(mensaje, valor) {
     [marcaje.id, texto, latitud, longitud,
      evaluacion?.geocercaId ?? null, evaluacion?.distanciaM ?? null,
      evaluacion?.dentro ?? null, semaforo,
-     adelantado ? 'El conductor mandó su ubicación antes de que se le pidiera' : null],
+     adelantado
+       ? `El conductor avisó antes de que se le preguntara (${marcaje.numero === 3 ? 'mandó su ubicación' : 'dijo que ya salió'})`
+       : null],
   );
 
   log.info(
@@ -264,12 +323,15 @@ async function procesarMensaje(mensaje, valor) {
 }
 
 /**
- * El conductor escribió que ya está en el filtro.
+ * Le pide al conductor la ubicación del filtro. Devuelve true si salió.
  *
- * El texto no prueba nada —lo mismo se escribe desde su casa—, así que el
- * marcaje NO se da por cumplido: se le pide la ubicación, que es lo único que
- * se puede comparar contra la geocerca. Cuando la mande entra por el camino de
- * la ubicación adelantada y ahí sí cuenta.
+ * Se llega aquí por dos caminos: tocó el botón «Ya llegué» (viene marcajeId) o
+ * lo escribió (no viene, y entonces hay que buscar cuál es su filtro de hoy).
+ *
+ * En los dos casos el marcaje NO se da por cumplido. El texto y el botón no
+ * prueban nada —lo mismo se tocan desde su casa—; lo único que se puede
+ * comparar contra la geocerca es la ubicación. Cuando la mande entra por el
+ * camino de la ubicación adelantada y ahí sí cuenta.
  *
  * Quedarse callado sería lo peor de los dos mundos: avisó, no pasó nada
  * visible, y veinte minutos después le llega la petición de algo que él ya da
@@ -277,33 +339,64 @@ async function procesarMensaje(mensaje, valor) {
  *
  * Nunca cuesta: acaba de escribir, así que la ventana está abierta.
  */
-async function pedirleLaUbicacion(conductor) {
+async function pedirleLaUbicacion(conductor, { marcajeId = null } = {}) {
   try {
-    const m = await unaFila(
-      `SELECT m.id, r.nombre AS ruta
-         FROM marcaje m
-         JOIN asignacion a ON a.id = m.asignacion_id
-         JOIN ruta r ON r.id = a.ruta_id
-        WHERE a.conductor_id = $1
-          AND m.numero = 3
-          AND m.respondido_en IS NULL
-          AND m.estado IN ('pendiente', 'enviado')
-          AND a.estado = 'programada'
-          AND m.programado_para BETWEEN now() - interval '4 hours'
-                                    AND now() + interval '6 hours'
-          -- Si ya se le pidió hace poco no se le repite. Sin esto, tres
-          -- mensajes seguidos suyos le devuelven tres peticiones iguales.
-          AND NOT EXISTS (
-            SELECT 1 FROM mensaje_saliente s
-             WHERE s.marcaje_id = m.id
-               AND s.enviado_en > now() - interval '10 minutes'
-          )
-        ORDER BY m.programado_para
-        LIMIT 1`,
-      [conductor.id],
-    );
-    if (!m) return;
-    if (await decidirCanal(conductor.id) !== 'libre') return;
+    // Con el botón viene el marcaje y no hay que adivinar cuál es.
+    //
+    // Las dos consultas llevan la misma guarda de no repetir, y en las dos la
+    // línea que importa es «s.enviado_en > m.enviado_en + 30 s». El único
+    // mensaje que sale a la vez que el marcaje es la pregunta misma —«¿ya
+    // llegaste?»—, y ésa no cuenta como haberle pedido la ubicación. Sin ese
+    // matiz la pregunta se bloqueaba a sí misma: quien contestara en los diez
+    // minutos siguientes no recibía nada.
+    const m = marcajeId
+      ? await unaFila(
+        `SELECT m.id, r.nombre AS ruta
+           FROM marcaje m
+           JOIN asignacion a ON a.id = m.asignacion_id
+           JOIN ruta r ON r.id = a.ruta_id
+          WHERE m.id = $1
+            AND a.conductor_id = $2
+            AND m.numero = 3
+            AND m.respondido_en IS NULL
+            -- Un toque es deliberado, así que aquí basta un minuto: sólo
+            -- protege del doble clic, no del conductor que insiste.
+            AND NOT EXISTS (
+              SELECT 1 FROM mensaje_saliente s
+               WHERE s.marcaje_id = m.id
+                 AND s.estado <> 'fallido'
+                 AND s.enviado_en > m.enviado_en + interval '30 seconds'
+                 AND s.enviado_en > now() - interval '1 minute'
+            )`,
+        [marcajeId, conductor.id],
+      )
+      : await unaFila(
+        `SELECT m.id, r.nombre AS ruta
+           FROM marcaje m
+           JOIN asignacion a ON a.id = m.asignacion_id
+           JOIN ruta r ON r.id = a.ruta_id
+          WHERE a.conductor_id = $1
+            AND m.numero = 3
+            AND m.respondido_en IS NULL
+            AND m.estado IN ('pendiente', 'enviado')
+            AND a.estado = 'programada'
+            AND m.programado_para BETWEEN now() - interval '4 hours'
+                                      AND now() + interval '6 hours'
+            -- Si ya se le pidió hace poco no se le repite. Sin esto, tres
+            -- mensajes seguidos suyos le devuelven tres peticiones iguales.
+            AND NOT EXISTS (
+              SELECT 1 FROM mensaje_saliente s
+               WHERE s.marcaje_id = m.id
+                 AND s.estado <> 'fallido'
+                 AND s.enviado_en > m.enviado_en + interval '30 seconds'
+                 AND s.enviado_en > now() - interval '10 minutes'
+            )
+          ORDER BY m.programado_para
+          LIMIT 1`,
+        [conductor.id],
+      );
+    if (!m) return false;
+    if (await decidirCanal(conductor.id) !== 'libre') return false;
 
     const cuerpo = interpolar(
       await parametro('texto.marcaje3', '📍 {nombre}, comparte tu ubicación para registrar el filtro.'),
@@ -316,9 +409,14 @@ async function pedirleLaUbicacion(conductor) {
       texto: cuerpo,
       marcajeId: m.id,
     });
-    log.info({ conductor: conductor.nombre, marcaje: m.id }, 'avisó por texto: se le pidió la ubicación');
+    log.info(
+      { conductor: conductor.nombre, marcaje: m.id, via: marcajeId ? 'botón' : 'texto' },
+      'avisó que llegó al filtro: se le pidió la ubicación',
+    );
+    return true;
   } catch (e) {
     log.warn({ err: e, conductor: conductor.nombre }, 'no se pudo pedir la ubicación');
+    return false;
   }
 }
 

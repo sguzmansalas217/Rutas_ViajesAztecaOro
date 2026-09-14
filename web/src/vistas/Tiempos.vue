@@ -51,9 +51,13 @@ const salida = computed(() => (base.value == null ? null : base.value + 40));
 
 const previa = computed(() => {
   if (base.value == null) return [];
+  // El 2 se cuenta desde el 1, no desde la hora del Excel. Es como se explica
+  // —«X minutos después del primero»— y así deja de ser posible dejar la
+  // revisión antes del despertar sin darse cuenta.
+  const uno = base.value + Number(v.value['marcaje1.desfase_min'] ?? 0);
   const t = [
-    { n: 1, nombre: 'Despertar', min: base.value + Number(v.value['marcaje1.desfase_min'] ?? 0) },
-    { n: 2, nombre: 'Revisión', min: base.value + Number(v.value['marcaje2.retraso_min'] ?? 0) },
+    { n: 1, nombre: 'Despertar', min: uno },
+    { n: 2, nombre: 'Revisión', min: uno + Number(v.value['marcaje2.retraso_min'] ?? 0) },
     { n: 3, nombre: 'Filtro', min: salida.value + Number(v.value['marcaje3.desfase_min'] ?? 0) },
     { n: 4, nombre: 'Salida', min: salida.value + Number(v.value['marcaje4.desfase_min'] ?? 0) },
   ];
@@ -144,24 +148,30 @@ onMounted(cargar);
       <input id="d1" v-model.number="v['marcaje1.desfase_min']" type="number" step="1" :disabled="!esAdmin" />
       <p class="tenue-txt">
         Con 0 sale a la hora que dice el Excel. Es el que abre la ventana de 24 h;
-        adelantarlo mucho no sirve de nada.
+        adelantarlo mucho no sirve de nada. Se contesta escribiendo.
       </p>
 
-      <label for="d2">2 · Revisión — minutos después de la hora de monitoreo</label>
+      <label for="d2">2 · Revisión — minutos <strong>después del despertar</strong></label>
       <input id="d2" v-model.number="v['marcaje2.retraso_min']" type="number" step="1" :disabled="!esAdmin" />
       <p class="tenue-txt">
-        El tiempo que le das para levantarse y salir rumbo a la unidad.
+        El tiempo que le das para levantarse y llegar a la unidad. Éste sí lleva
+        botones: <em>Todo bien</em> o <em>Hay una falla</em>.
       </p>
 
       <label for="d3">3 · Filtro — respecto a la hora de salida <span class="tenue-txt">(negativo = antes)</span></label>
       <input id="d3" v-model.number="v['marcaje3.desfase_min']" type="number" step="1" :disabled="!esAdmin" />
       <p class="tenue-txt">
-        El del alcoholímetro, el único que pide ubicación. Con −20 se le pregunta
-        veinte minutos antes de que salga la ruta.
+        El del alcoholímetro. Primero le pregunta si ya llegó, con el botón
+        <em>Ya llegué</em>; al tocarlo se le pide la ubicación, que es lo único
+        que cuenta. Con −20 se le pregunta veinte minutos antes de que salga.
       </p>
 
       <label for="d4">4 · Salida — respecto a la hora de salida</label>
       <input id="d4" v-model.number="v['marcaje4.desfase_min']" type="number" step="1" :disabled="!esAdmin" />
+      <p class="tenue-txt">
+        Botón <em>Ya salí</em>. Si lo dice antes por su cuenta —«ya estoy en
+        ruta»— también cuenta y no se le vuelve a preguntar.
+      </p>
 
       <label for="tol">Tolerancia para contestar (minutos)</label>
       <input id="tol" v-model.number="v['marcaje.tolerancia_min']" type="number" min="1" max="240" step="1" :disabled="!esAdmin" />
