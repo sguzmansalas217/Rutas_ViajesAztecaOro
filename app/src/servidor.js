@@ -36,6 +36,10 @@ export async function construirServidor() {
   await app.register(cors, {
     origin: config.produccion ? [config.urlPublica] : true,
     credentials: true,
+    // Sin esto el navegador esconde el encabezado del token renovado y la
+    // sesión se seguiría cayendo en desarrollo, donde el portal y la API están
+    // en puertos distintos. En producción van tras el mismo Nginx y no aplica.
+    exposedHeaders: ['x-token-nuevo'],
   });
   await app.register(cookie, { secret: config.jwt.secreto });
   await app.register(jwt, {
@@ -51,9 +55,40 @@ export async function construirServidor() {
   await app.register(multipart, { limits: { fileSize: 25 * 1024 * 1024, files: 1 } });
 
   // ── Autenticación ─────────────────────────────────────────────────────────
+  //
+  //  El token se renueva solo. Antes duraba lo que durara y ya: a los treinta
+  //  minutos exactos la sesión moría aunque se estuviera capturando en ese
+  //  momento, y lo que se llevaba por delante era el formulario a medias.
+  //
+  //  Ahora, pasada la mitad de su vida, cada petición devuelve uno nuevo. Para
+  //  quien usa el portal la sesión no se acaba nunca; para quien deja el
+  //  navegador abierto y se va, se acaba igual que antes. Eso es lo que se
+  //  quiere medir: inactividad, no el reloj desde que entró.
+  //
+  //  Viaja en un encabezado y no sólo en la cookie porque la autenticación de
+  //  verdad va por 'Authorization: Bearer' —la cookie no está conectada al
+  //  verificador—, así que renovar sólo la cookie no habría servido de nada.
+  async function verificarYRenovar(req, reply) {
+    await req.jwtVerify();
+
+    const vida = req.user.exp - req.user.iat;
+    const resta = req.user.exp - Math.floor(Date.now() / 1000);
+    if (!(vida > 0) || resta > vida / 2) return;
+
+    const token = app.jwt.sign({ id: req.user.id, correo: req.user.correo, rol: req.user.rol });
+    reply.header('x-token-nuevo', token);
+    reply.setCookie('token', token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: config.produccion,
+      path: '/',
+      maxAge: vida,
+    });
+  }
+
   app.decorate('autenticar', async (req, reply) => {
     try {
-      await req.jwtVerify();
+      await verificarYRenovar(req, reply);
     } catch {
       return reply.code(401).send({ error: 'No autenticado' });
     }
@@ -61,7 +96,7 @@ export async function construirServidor() {
 
   app.decorate('exigirRol', (...roles) => async (req, reply) => {
     try {
-      await req.jwtVerify();
+      await verificarYRenovar(req, reply);
     } catch {
       return reply.code(401).send({ error: 'No autenticado' });
     }
@@ -74,7 +109,7 @@ export async function construirServidor() {
   // dominio/proveedor.js.
   app.decorate('exigirProveedor', async (req, reply) => {
     try {
-      await req.jwtVerify();
+      await verificarYRenovar(req, reply);
     } catch {
       return reply.code(401).send({ error: 'No autenticado' });
     }

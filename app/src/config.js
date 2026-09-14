@@ -34,8 +34,12 @@ export const config = {
   jwt: {
     // En producción exigimos un secreto real; en desarrollo permitimos uno fijo.
     secreto: produccion ? requerido('JWT_SECRETO') : opcional('JWT_SECRETO', 'secreto-de-desarrollo'),
-    expira: opcional('JWT_EXPIRA', '30m'),
-    expiraRefresco: opcional('JWT_EXPIRA_REFRESCO', '7d'),
+
+    // Tiempo INACTIVO antes de pedir la contraseña otra vez, no tiempo total de
+    // sesión: el token se renueva solo mientras se use el portal (servidor.js).
+    // Eran 30 minutos sin renovación, así que sacaba a media captura a quien
+    // llevaba media hora trabajando — el peor momento posible.
+    expira: opcional('JWT_EXPIRA', '2h'),
   },
 
   admin: {

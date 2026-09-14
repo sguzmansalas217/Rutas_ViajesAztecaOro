@@ -31,6 +31,12 @@ async function pedir(metodo, ruta, cuerpo, opciones = {}) {
   // sistema se mueve de sitio, esto lo sigue solo.
   const r = await fetch(`${import.meta.env.BASE_URL}api${ruta}`, { method: metodo, headers: cabeceras, body, credentials: 'include', ...opciones });
 
+  // La API renueva el token cuando ya va por la mitad de su vida y lo devuelve
+  // aquí. Mientras se use el portal la sesión no se acaba; si se deja quieto,
+  // sí. Se guarda antes de mirar el estado: un 403 también trae token bueno.
+  const renovado = r.headers.get('x-token-nuevo');
+  if (renovado) fijarToken(renovado);
+
   // El 401 del propio login no es una sesión vencida: es una contraseña que no
   // coincide, y la API ya manda ese texto. Sin la excepción, quien se equivoca
   // al teclear lee "Sesión expirada" y se queda buscando qué sesión.
