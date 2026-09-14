@@ -140,17 +140,22 @@ export default async function operacion(app) {
   });
 
   // ── Historial del día ─────────────────────────────────────────────────────
-  // El Tablero contesta "¿cómo va la ruta?" y por eso está de cara a la ruta:
-  // una fila por ruta, cuatro cuadritos. Esto contesta otra pregunta —"¿qué
-  // pasó hoy, en orden?"— y sólo se puede leer de cara al tiempo: qué se
-  // preguntó, a qué hora, qué contestó cada quien y desde dónde.
-  //
-  // Es la vista que se usa cuando el cliente reclama algo de hace tres días. En
-  // el Tablero eso obliga a abrir ruta por ruta; aquí es un renglón.
+  // El Tablero contesta "¿cómo va la ruta?" —hoy, en vivo, para levantar el
+  // teléfono ahora—. Esto contesta "¿qué pasó?": la pregunta que llega tres
+  // días después, cuando el cliente reclama y hay que reconstruir la mañana con
+  // horas y ubicaciones en la mano.
   //
   // Sólo lo que ya ocurrió: un marcaje que todavía no se envía no es historia,
   // es agenda, y mezclarlos haría que la lista de las 5 a.m. ya estuviera llena
   // de cosas que no han pasado.
+  //
+  // Y aquí SÍ entran las asignaciones 'reemplazada', al revés que en el Tablero.
+  // Una recarga del Excel marca así las filas viejas, y eso está bien para el
+  // Tablero —esa asignación ya no opera—, pero es un desastre para el historial:
+  // los mensajes ya salieron, el conductor ya contestó, y al subir el Excel
+  // corregido de media mañana el día entero desaparecía de la pantalla. Lo que
+  // pasó, pasó, y la evidencia no se borra porque se haya recargado un archivo.
+  // El filtro de 'enviado_en' basta: lo reemplazado que nunca se envió no sale.
   app.get('/historial', async (req) => {
     const fecha = req.query.fecha ?? hoyLocal();
     return filas(
@@ -158,7 +163,11 @@ export default async function operacion(app) {
               m.programado_para, m.enviado_en, m.respondido_en,
               m.latitud, m.longitud, m.distancia_m, m.dentro_geocerca,
               g.nombre AS geocerca,
-              r.nombre AS ruta, r.turno, r.encargado,
+              -- La pantalla agrupa por ruta y necesita por cuál agrupar. El
+              -- nombre no sirve de llave: la misma ruta puede ir dos veces el
+              -- mismo día, con distinta unidad y distinto conductor.
+              a.id AS asignacion, a.estado AS asignacion_estado,
+              r.nombre AS ruta, r.turno, r.encargado, r.hora_monitoreo,
               v.clave  AS unidad,
               c.nombre AS conductor
          FROM marcaje m
@@ -167,7 +176,7 @@ export default async function operacion(app) {
          LEFT JOIN vehiculo  v ON v.id = a.vehiculo_id
          LEFT JOIN conductor c ON c.id = a.conductor_id
          LEFT JOIN geocerca  g ON g.id = m.geocerca_id
-        WHERE a.fecha = $1 AND a.estado <> 'reemplazada'
+        WHERE a.fecha = $1
           AND (m.enviado_en IS NOT NULL OR m.respondido_en IS NOT NULL)
         -- Lo último arriba: un historial se lee empezando por lo que acaba de
         -- pasar, no por lo de hace ocho horas.

@@ -311,10 +311,11 @@ tbody tr:hover { background: #f2f7ff; }
 th.col-faro, td.col-faro { text-align: center; padding: 6px 5px; }
 
 /* ── Historial ────────────────────────────────────────────────────────────
-   Un renglón por evento y lo más apretado que se deja leer. Una mañana son
-   doscientos eventos: con el alto normal de tabla caben ocho en pantalla y
-   entonces la vista no sirve para lo único que se le pide —pasar el ojo por
-   el día completo y ver dónde se atoró—.                                   */
+   Un renglón por ruta y lo más apretado que se deja leer. Una mañana son
+   treinta rutas y ciento veinte eventos: con el alto normal de tabla caben
+   ocho en pantalla y entonces la vista no sirve para lo único que se le pide
+   —pasar el ojo por el día completo y ver dónde se atoró—. El detalle de cada
+   ruta se abre sólo cuando alguien lo pide.                                */
 .bitacora td { padding: 5px 12px; }
 .bitacora .faro { width: 22px; height: 22px; font-size: 12px; border-radius: 6px; }
 .bitacora .col-hora {
@@ -332,6 +333,46 @@ th.col-faro, td.col-faro { text-align: center; padding: 6px 5px; }
   border: 1px solid #d4e0f5; text-decoration: none;
 }
 .punto-mapa:hover { background: #fff; border-color: var(--marca-clara); }
+
+/* Los cuatro cuadritos de la ruta, en su orden fijo. El hueco de un marcaje
+   que no ocurrió tiene que ocupar su lugar y no cerrarse: si los cuadritos se
+   recorren, la tercera columna deja de ser "el filtro" y ya no se pueden
+   comparar dos renglones de un vistazo. */
+th.col-faros, td.col-faros { width: 1%; white-space: nowrap; }
+.faros { display: inline-flex; gap: 4px; }
+
+/* El renglón entero abre y cierra: un triangulito de diez píxeles es un blanco
+   difícil, y aquí no compite con nada más —el único enlace de la fila, el del
+   mapa, vive adentro del detalle—. */
+.fila-ruta { cursor: pointer; }
+.fila-ruta:hover { background: var(--marca-tenue); }
+.fila-ruta.abierta { background: var(--marca-tenue); }
+.fila-ruta.abierta td { border-bottom-color: transparent; }
+th.col-abrir, td.col-abrir { width: 1%; text-align: center; }
+.flecha { color: var(--tenue); font-size: 11px; }
+
+/* Cómo salió la ruta completa: el peor de sus cuatro marcajes. Va en punto y
+   no en cuadrito para que no se confunda con los marcajes de al lado —son dos
+   cosas distintas y una es el resumen de la otra—. */
+.senal {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 7px; vertical-align: 1px;
+}
+.senal.verde     { background: var(--verde); }
+.senal.amarillo  { background: var(--amarillo); }
+.senal.rojo      { background: var(--rojo); }
+.senal.pendiente { background: #cbd5e1; }
+
+/* El detalle. Metido y sobre fondo propio para que se lea como "esto pertenece
+   al renglón de arriba" y no como cuatro rutas más. */
+.fila-detalle > td { padding: 0 12px 10px 12px; background: var(--marca-tenue); }
+.detalle { width: 100%; border-collapse: collapse; }
+.detalle td {
+  padding: 4px 10px; border: 0;
+  border-top: 1px solid #e3eaf6;
+}
+.detalle tr:first-child td { border-top: 0; }
+.detalle .col-mapa { width: 1%; text-align: right; white-space: nowrap; }
 .cab-faro { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 /* El nombre del marcaje en vez del número. '1, 2, 3, 4' obliga a traducir
    mentalmente cuál es cuál en cada renglón; con cuatro columnas idénticas eso
