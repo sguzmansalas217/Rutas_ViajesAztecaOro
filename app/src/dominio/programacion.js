@@ -1,19 +1,24 @@
 // ============================================================================
 //  PROGRAMACIÓN DE LOS 4 MARCAJES
 //
-//  El Excel trae una sola hora por ruta: la HORA DE MONITOREO. Los cuatro
-//  marcajes se derivan de ella con desfases configurables (tabla parametro),
-//  para poder ajustarlos sin tocar código cuando la operación lo pida.
+//  El Excel trae una sola hora por ruta: la HORA DE MONITOREO. De ahí salen los
+//  cuatro marcajes, cada uno contado DESDE EL ANTERIOR, con minutos que se
+//  configuran en el portal (pantalla Tiempos, tabla parametro):
 //
-//      1  despertar      hora_monitoreo            (plantilla, abre la ventana)
-//      2  revisión       marcaje 1 + 10 min        (libre, gratis)
-//      3  filtro         hora_salida − 20 min      (pide ubicación)
-//      4  salida         hora_salida               (libre, gratis)
+//      1  despertar   hora del Excel  + marcaje1.desfase_min   (abre la ventana)
+//      2  revisión    marcaje 1       + marcaje2.retraso_min   (botones)
+//      3  filtro      marcaje 2       + marcaje3.retraso_min   (pide ubicación)
+//      4  salida      marcaje 3       + marcaje4.retraso_min   (botón)
 //
-//  El 2 se cuenta desde el 1 y no desde la hora de monitoreo. Con el despertar
-//  en 0 da lo mismo, pero en cuanto se mueve el despertar deja de darlo: antes
-//  se podía dejar la revisión ANTES del despertar sin darse cuenta, y al
-//  conductor le llegaban las preguntas al revés.
+//  En cascada y no desde un origen común, y todos los números positivos. Antes
+//  había dos anclas —los 1 y 2 desde la hora del Excel, los 3 y 4 desde una
+//  hora de salida que la hoja MAÑANA no trae y que el sistema inventaba como
+//  monitoreo + 40 min—, y el filtro se configuraba como «−20»: veinte minutos
+//  antes de una hora que no está en el archivo. Setear eso bien exigía tener
+//  el código en la cabeza, y setearlo mal no avisaba: los mensajes se
+//  encabalgaban y al conductor le llegaban en desorden.
+//
+//  Con la cascada el encabalgamiento no se valida, es que no se puede escribir.
 //
 //  Sólo se programan asignaciones en estado 'programada': si falta el teléfono
 //  la asignación está 'por_resolver' y no genera marcajes ni gasto.
@@ -23,38 +28,41 @@ import { log } from '../log.js';
 
 const ZONA = process.env.TZ || 'America/Mexico_City';
 
+// Cada espera es «cuánto después del marcaje anterior», así que negativa no
+// significa nada: se toma como cero. La base sí puede ser negativa —despertar
+// antes de la hora del Excel es una petición legítima—.
+const espera = (v, def) => {
+  const n = Number(v ?? def);
+  return Number.isFinite(n) ? Math.max(0, Math.round(n)) : def;
+};
+
 /**
- * Los cuatro desfases ya resueltos, en minutos, listos para la consulta.
- *
- * El 2 se guarda como «minutos después del despertar», así que aquí se le suma
- * el del 1: la consulta los cuenta todos desde la misma base.
+ * Los cuatro desfases resueltos en minutos DESDE LA HORA DEL EXCEL, que es lo
+ * que la consulta necesita. Se acumulan aquí para que la cascada viva en un
+ * solo lugar y no repartida entre dos SQL.
  */
 export function desfasesDe(p) {
-  const uno = Number(p['marcaje1.desfase_min'] ?? 0);
-  return {
-    1: uno,
-    2: uno + Number(p['marcaje2.retraso_min'] ?? 10),
-    3: Number(p['marcaje3.desfase_min'] ?? -20), // relativo a la hora de salida
-    4: Number(p['marcaje4.desfase_min'] ?? 0),   // relativo a la hora de salida
-  };
+  const base = Number(p['marcaje1.desfase_min'] ?? 0);
+  const uno = Number.isFinite(base) ? Math.round(base) : 0;
+  const dos = uno + espera(p['marcaje2.retraso_min'], 10);
+  const tres = dos + espera(p['marcaje3.retraso_min'], 10);
+  const cuatro = tres + espera(p['marcaje4.retraso_min'], 20);
+  return { 1: uno, 2: dos, 3: tres, 4: cuatro };
 }
 
 export async function programarSemana(desde, hasta) {
   if (!desde || !hasta) return 0;
-  const p = await parametros();
+  const d = desfasesDe(await parametros());
 
-  const desfases = desfasesDe(p);
-
-  // Los marcajes 1 y 2 cuelgan de hora_monitoreo; los 3 y 4 de hora_salida
-  // (si la ruta no trae salida, se usa hora_monitoreo + 40/60 min).
+  // Los cuatro cuelgan de hora_monitoreo. La columna ruta.hora_salida se sigue
+  // importando —las hojas ENTRADA TA y TB la traen y se ve en el catálogo—,
+  // pero ya no programa nada: la segunda ancla era justo lo que hacía
+  // imposible de entender la pantalla de Tiempos.
   const r = await consultar(
     `INSERT INTO marcaje (asignacion_id, numero, programado_para, estado)
      SELECT a.id,
             n.numero,
-            (a.fecha
-              + CASE WHEN n.numero <= 2 THEN r.hora_monitoreo
-                     ELSE COALESCE(r.hora_salida, r.hora_monitoreo + interval '40 minutes')
-                END)::timestamp AT TIME ZONE $3
+            (a.fecha + r.hora_monitoreo)::timestamp AT TIME ZONE $3
               + (n.desfase * interval '1 minute'),
             'pendiente'
        FROM asignacion a
@@ -63,7 +71,7 @@ export async function programarSemana(desde, hasta) {
       WHERE a.fecha BETWEEN $1 AND $2
         AND a.estado = 'programada'
      ON CONFLICT (asignacion_id, numero) DO NOTHING`,
-    [desde, hasta, ZONA, desfases[1], desfases[2], desfases[3], desfases[4]],
+    [desde, hasta, ZONA, d[1], d[2], d[3], d[4]],
   );
 
   log.info({ desde, hasta, marcajes: r.rowCount }, 'marcajes programados');
@@ -83,20 +91,19 @@ export async function programarSemana(desde, hasta) {
  */
 export async function programarVarias(ids) {
   if (!ids?.length) return 0;
-  const p = await parametros();
-  const d = desfasesDe(p);
+  const d = desfasesDe(await parametros());
   const r = await consultar(
     `INSERT INTO marcaje (asignacion_id, numero, programado_para, estado)
-     SELECT a.id, n.numero,
-            (a.fecha
-              + CASE WHEN n.numero <= 2 THEN r.hora_monitoreo
-                     ELSE COALESCE(r.hora_salida, r.hora_monitoreo + interval '40 minutes')
-                END)::timestamp AT TIME ZONE $2
+     SELECT a.id,
+            n.numero,
+            (a.fecha + r.hora_monitoreo)::timestamp AT TIME ZONE $2
               + (n.desfase * interval '1 minute'),
             'pendiente'
-       FROM asignacion a JOIN ruta r ON r.id = a.ruta_id
+       FROM asignacion a
+       JOIN ruta r ON r.id = a.ruta_id
        CROSS JOIN (VALUES (1, $3::int), (2, $4::int), (3, $5::int), (4, $6::int)) AS n(numero, desfase)
-      WHERE a.id = ANY($1::int[]) AND a.estado = 'programada'
+      WHERE a.id = ANY($1::int[])
+        AND a.estado = 'programada'
      ON CONFLICT (asignacion_id, numero) DO NOTHING`,
     [ids.map(Number), ZONA, d[1], d[2], d[3], d[4]],
   );

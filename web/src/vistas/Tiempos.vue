@@ -2,24 +2,35 @@
 // A qué hora sale cada uno de los cuatro marcajes.
 //
 // El Excel trae una sola hora por ruta —la de monitoreo— y de ahí se derivan
-// los cuatro. Hasta ahora esos desfases sólo se cambiaban con un UPDATE a mano
-// en la base, así que en la práctica eran fijos: ajustar la operación pedía al
-// proveedor. Aquí se tocan desde el portal y se ve el resultado antes de
-// guardar.
+// los cuatro, cada uno contado DESDE EL ANTERIOR: despertar tantos minutos
+// después de la hora del Excel, revisión tantos después del despertar, filtro
+// tantos después de la revisión, salida tantos después del filtro. Se lee
+// igual que se dice en voz alta.
+//
+// Antes no era así. Los marcajes 3 y 4 colgaban de una «hora de salida» que la
+// hoja MAÑANA no trae y que el sistema inventaba, y el filtro se ponía como
+// −20: veinte minutos antes de una hora que no está en el archivo. Se podía
+// setear bien sabiendo el truco, y setearlo mal no avisaba —los mensajes se
+// encabalgaban y al conductor le llegaban en desorden—. Con la cascada el
+// encabalgamiento no se valida: no se puede escribir.
 import { ref, computed, onMounted } from 'vue';
 import { api } from '../api.js';
 import { esAdmin } from '../sesion.js';
 
-// Se guardan con el nombre que ya tenían en la tabla parametro. Cambiarlos por
-// unos más bonitos obligaría a migrar y a tocar programacion.js, y el nombre
-// no lo lee nadie.
+// Se guardan con el nombre que ya tenían en la tabla parametro. El nombre no lo
+// lee nadie; lo que importa es que coincidan con dominio/programacion.js.
 const CAMPOS = [
   { clave: 'marcaje1.desfase_min', def: 0 },
   { clave: 'marcaje2.retraso_min', def: 10 },
-  { clave: 'marcaje3.desfase_min', def: -20 },
-  { clave: 'marcaje4.desfase_min', def: 0 },
+  { clave: 'marcaje3.retraso_min', def: 10 },
+  { clave: 'marcaje4.retraso_min', def: 20 },
   { clave: 'marcaje.tolerancia_min', def: 15 },
 ];
+
+// Los tres de en medio son esperas: negativas no querrían decir nada. El
+// primero sí puede serlo —despertar antes de la hora del Excel es una petición
+// razonable—.
+const ESPERAS = ['marcaje2.retraso_min', 'marcaje3.retraso_min', 'marcaje4.retraso_min'];
 
 const cargando = ref(true);
 const error = ref('');
@@ -44,34 +55,27 @@ const aTexto = (n) => {
 
 const base = computed(() => enMin(ejemplo.value));
 
-// La hoja del cliente no trae columna de salida, así que el sistema la supone
-// 40 min después del monitoreo. Los marcajes 3 y 4 cuelgan de ahí, no de la
-// hora de monitoreo: por eso se enseña también en la vista previa.
-const salida = computed(() => (base.value == null ? null : base.value + 40));
+const num = (clave) => Number(v.value[clave] ?? 0);
 
 const previa = computed(() => {
   if (base.value == null) return [];
-  // El 2 se cuenta desde el 1, no desde la hora del Excel. Es como se explica
-  // —«X minutos después del primero»— y así deja de ser posible dejar la
-  // revisión antes del despertar sin darse cuenta.
-  const uno = base.value + Number(v.value['marcaje1.desfase_min'] ?? 0);
+  const uno = base.value + num('marcaje1.desfase_min');
+  const dos = uno + num('marcaje2.retraso_min');
+  const tres = dos + num('marcaje3.retraso_min');
+  const cuatro = tres + num('marcaje4.retraso_min');
   const t = [
     { n: 1, nombre: 'Despertar', min: uno },
-    { n: 2, nombre: 'Revisión', min: uno + Number(v.value['marcaje2.retraso_min'] ?? 0) },
-    { n: 3, nombre: 'Filtro', min: salida.value + Number(v.value['marcaje3.desfase_min'] ?? 0) },
-    { n: 4, nombre: 'Salida', min: salida.value + Number(v.value['marcaje4.desfase_min'] ?? 0) },
+    { n: 2, nombre: 'Revisión', min: dos },
+    { n: 3, nombre: 'Filtro', min: tres },
+    { n: 4, nombre: 'Salida', min: cuatro },
   ];
   return t.map((m, i) => ({ ...m, hora: aTexto(m.min), espera: i === 0 ? null : m.min - t[i - 1].min }));
 });
 
-// Un marcaje que sale antes que el anterior no revienta nada —cada uno se manda
-// por su cuenta—, pero el conductor recibe las preguntas en desorden y el
-// tablero se lee al revés. Es el error fácil de cometer aquí.
-const desordenado = computed(() => previa.value.some((m) => m.espera != null && m.espera < 0));
-
 const valido = computed(() => CAMPOS.every((c) => {
   const n = Number(v.value[c.clave]);
-  return Number.isInteger(n) && n >= -240 && n <= 240;
+  const minimo = ESPERAS.includes(c.clave) ? 0 : -240;
+  return Number.isInteger(n) && n >= minimo && n <= 240;
 }) && Number(v.value['marcaje.tolerancia_min']) >= 1);
 
 const cambio = computed(() => CAMPOS.some((c) => Number(v.value[c.clave]) !== Number(guardado.value[c.clave])));
@@ -119,8 +123,8 @@ onMounted(cargar);
 <template>
   <h2>Tiempos</h2>
   <p class="sub">
-    El Excel trae una sola hora por ruta. De ahí salen los cuatro marcajes, cada
-    uno con los minutos que se le pongan aquí.
+    El Excel trae una sola hora por ruta. De ahí salen los cuatro marcajes, uno
+    detrás de otro, con los minutos que se le pongan aquí.
   </p>
 
   <div v-if="error" class="error">{{ error }}</div>
@@ -135,16 +139,11 @@ onMounted(cargar);
     mueve los marcajes de hoy: hay que volver a cargar el archivo.
   </div>
 
-  <div v-if="desordenado" class="aviso amarillo">
-    Con estos números <strong>un marcaje sale antes que el anterior</strong>.
-    Funciona, pero al conductor le llegan las preguntas en desorden.
-  </div>
-
   <div class="cuenta">
     <div class="caja">
       <h3>Minutos de cada marcaje</h3>
 
-      <label for="d1">1 · Despertar — respecto a la hora de monitoreo</label>
+      <label for="d1">1 · Despertar — minutos <strong>después de la hora del Excel</strong></label>
       <input id="d1" v-model.number="v['marcaje1.desfase_min']" type="number" step="1" :disabled="!esAdmin" />
       <p class="tenue-txt">
         Con 0 sale a la hora que dice el Excel. Es el que abre la ventana de 24 h;
@@ -152,22 +151,22 @@ onMounted(cargar);
       </p>
 
       <label for="d2">2 · Revisión — minutos <strong>después del despertar</strong></label>
-      <input id="d2" v-model.number="v['marcaje2.retraso_min']" type="number" step="1" :disabled="!esAdmin" />
+      <input id="d2" v-model.number="v['marcaje2.retraso_min']" type="number" min="0" step="1" :disabled="!esAdmin" />
       <p class="tenue-txt">
         El tiempo que le das para levantarse y llegar a la unidad. Éste sí lleva
         botones: <em>Todo bien</em> o <em>Hay una falla</em>.
       </p>
 
-      <label for="d3">3 · Filtro — respecto a la hora de salida <span class="tenue-txt">(negativo = antes)</span></label>
-      <input id="d3" v-model.number="v['marcaje3.desfase_min']" type="number" step="1" :disabled="!esAdmin" />
+      <label for="d3">3 · Filtro — minutos <strong>después de la revisión</strong></label>
+      <input id="d3" v-model.number="v['marcaje3.retraso_min']" type="number" min="0" step="1" :disabled="!esAdmin" />
       <p class="tenue-txt">
         El del alcoholímetro. Primero le pregunta si ya llegó, con el botón
         <em>Ya llegué</em>; al tocarlo se le pide la ubicación, que es lo único
-        que cuenta. Con −20 se le pregunta veinte minutos antes de que salga.
+        que cuenta.
       </p>
 
-      <label for="d4">4 · Salida — respecto a la hora de salida</label>
-      <input id="d4" v-model.number="v['marcaje4.desfase_min']" type="number" step="1" :disabled="!esAdmin" />
+      <label for="d4">4 · Salida — minutos <strong>después del filtro</strong></label>
+      <input id="d4" v-model.number="v['marcaje4.retraso_min']" type="number" min="0" step="1" :disabled="!esAdmin" />
       <p class="tenue-txt">
         Botón <em>Ya salí</em>. Si lo dice antes por su cuenta —«ya estoy en
         ruta»— también cuenta y no se le vuelve a preguntar.
@@ -195,9 +194,8 @@ onMounted(cargar);
       <label for="ej">Hora de monitoreo de ejemplo</label>
       <input id="ej" v-model="ejemplo" placeholder="05:00" autocomplete="off" style="max-width:140px" />
       <p class="tenue-txt">
-        Si la ruta no trae hora de salida propia —el formato de la hoja MAÑANA no
-        la trae—, el sistema la toma 40 min después: las
-        <strong>{{ salida != null ? aTexto(salida) : '—' }}</strong> en este ejemplo.
+        Escribe la hora que trae el Excel y abajo se ve a qué hora le llegaría
+        cada mensaje al conductor.
       </p>
 
       <table v-if="previa.length" style="margin-top:10px">
@@ -209,17 +207,15 @@ onMounted(cargar);
             <td>{{ m.n }}</td>
             <td><strong>{{ m.nombre }}</strong></td>
             <td>{{ m.hora }}</td>
-            <td :class="m.espera != null && m.espera < 0 ? 'mal' : 'tenue-txt'">
-              {{ m.espera == null ? '—' : `${m.espera} min` }}
-            </td>
+            <td class="tenue-txt">{{ m.espera == null ? '—' : `${m.espera} min` }}</td>
           </tr>
         </tbody>
       </table>
       <p v-else class="tenue-txt">Escribe una hora en formato 24 h, por ejemplo 05:00.</p>
 
       <p class="tenue-txt" v-if="!cargando">
-        Para una prueba conviene apretarlos —5 y 10 minutos— y volver a subir el
-        archivo; para producción, los de siempre: 0, 10, −20 y 0.
+        Para una prueba conviene apretarlos —1 y 2 minutos— y volver a subir el
+        archivo; para producción, los de siempre: 0, 10, 10 y 20.
       </p>
     </div>
   </div>

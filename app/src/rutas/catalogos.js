@@ -300,6 +300,13 @@ export default async function catalogos(app) {
   const SOLO_PROVEEDOR = (clave) =>
     clave.startsWith('tarifa.') || clave.startsWith('precio.') || clave === 'limite.vehiculos';
 
+  // Los tres retrasos son «cuántos minutos después del marcaje anterior», y en
+  // negativo eso no quiere decir nada: querría decir antes del anterior, o sea
+  // los mensajes cruzados que la cascada vino a quitar. programacion.js ya los
+  // recorta a cero, pero entonces la pantalla enseñaría un número y el sistema
+  // usaría otro. Mejor no dejarlo guardar.
+  const NO_NEGATIVO = /^marcaje[234]\.retraso_min$/;
+
   app.get('/parametros', async (req) => {
     const todos = await parametros();
     if (esProveedor(req)) return todos;
@@ -312,6 +319,9 @@ export default async function catalogos(app) {
     }
     if (SOLO_PROVEEDOR(req.params.clave) && !esProveedor(req)) {
       return reply.code(403).send({ error: 'Sin permisos para esta operación' });
+    }
+    if (NO_NEGATIVO.test(req.params.clave) && !(Number(req.body.valor) >= 0)) {
+      return reply.code(400).send({ error: 'Los minutos de espera no pueden ser negativos' });
     }
     // Cambiar precio.* es ejercer la Cláusula Cuarta: queda en bitácora.
     await fijarParametro(req.params.clave, req.body.valor);

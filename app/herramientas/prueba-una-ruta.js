@@ -24,7 +24,7 @@
 //     --nota       ""
 //     --encargado  GERARDO
 //     --dia        2026-09-04         día que se llena    (por omisión hoy)
-//     --desfases   "0,10,-20,0"       sólo para el resumen que se imprime abajo
+//     --tiempos    "0,10,10,20"       sólo para el resumen que se imprime abajo
 //     --salida     archivo.xlsx
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -142,29 +142,33 @@ hoja.getColumn(13).width = 14;
 await writeFile(salida, Buffer.from(await libro.xlsx.writeBuffer()));
 
 // ── Qué va a pasar ──────────────────────────────────────────────────────────
-// La hoja MAÑANA no trae columna de salida, así que los marcajes 3 y 4 cuelgan
-// de hora_monitoreo + 40 min (ver dominio/programacion.js).
+// Los cuatro marcajes van en cascada: cada uno tantos minutos después del
+// anterior, y el primero después de la hora del Excel (ver programacion.js).
 //
-// Los desfases se pueden cambiar desde el portal (pantalla Tiempos), y este
-// archivo no habla con la base. Si se cambiaron, se le pasan con --desfases
-// para que lo impreso aquí abajo coincida con lo que va a pasar de verdad.
+// Los tiempos se cambian desde el portal (pantalla Tiempos) y este archivo no
+// habla con la base. Si se cambiaron, se le pasan con --tiempos para que lo
+// impreso aquí abajo coincida con lo que va a pasar de verdad.
 const enMin = (n) => `${dosDig(Math.floor(n / 60) % 24)}:${dosDig(n % 60)}`;
 const base = hh * 60 + mi;
 
-const d = String(opt('desfases', '0,10,-20,0')).split(',').map(Number);
+const d = String(opt('tiempos', '0,10,10,20')).split(',').map(Number);
 if (d.length !== 4 || d.some(Number.isNaN)) {
-  console.error('--desfases espera cuatro números: "0,10,-20,0" (1 y 2 desde monitoreo, 3 y 4 desde la salida).');
+  console.error('--tiempos espera cuatro números: "0,10,10,20" (cada uno es «minutos después del anterior»).');
   process.exit(1);
 }
+
+const uno = base + d[0];
+const dos = uno + d[1];
+const tres = dos + d[2];
+const cuatro = tres + d[3];
 
 console.log(`\nEscrito: ${path.resolve(salida)}`);
 console.log(`Semana ${iso(lunes)} → ${iso(new Date(lunes.getTime() + 6 * 86400000))}`);
 console.log(`Ruta "${nombreRuta}" el ${DIAS[indiceHoy]} ${iso(hoy)} a las ${horaTexto}, con ${conductor}.`);
 console.log(`Hoja TELEFONOS: ${soloNombre} · unidad ${unidad} · ${telefono}`);
-// El 2 cuelga del 1, no de la hora del Excel (ver dominio/programacion.js).
-console.log(`\nCon los desfases ${d.join(', ')} los marcajes salen a las:`);
-console.log(`   1 despertar   ${enMin(base + d[0])}                  texto`);
-console.log(`   2 revisión    ${enMin(base + d[0] + d[1])}   ${d[1]} min después del 1   botones`);
-console.log(`   3 filtro      ${enMin(base + 40 + d[2])}                  botón → ubicación`);
-console.log(`   4 salida      ${enMin(base + 40 + d[3])}                  botón`);
+console.log(`\nCon los tiempos ${d.join(', ')} los marcajes salen a las:`);
+console.log(`   1 despertar   ${enMin(uno)}   ${d[0]} min después del Excel   texto`);
+console.log(`   2 revisión    ${enMin(dos)}   ${d[1]} min después del 1       botones`);
+console.log(`   3 filtro      ${enMin(tres)}   ${d[2]} min después del 2       botón → ubicación`);
+console.log(`   4 salida      ${enMin(cuatro)}   ${d[3]} min después del 3       botón`);
 console.log(`\nSúbelo en Cargar Excel y pon el tablero en ${iso(hoy)}.`);
