@@ -373,6 +373,19 @@ async function procesarMensaje(mensaje, valor) {
   // ve en el tablero y la respuesta queda escrita en el detalle.
   if (botonId?.startsWith('m2-no-')) semaforo = 'amarillo';
 
+  // Lo que ya se venció no vuelve a verde, aunque la tolerancia lo permita.
+  //
+  // Son dos relojes distintos y hay que respetar los dos: la tolerancia dice si
+  // la hora fue aceptable, y la espera dice cuándo se le avisa al encargado que
+  // no hay respuesta. Si la espera es más corta que la tolerancia —que es lo
+  // normal, se avisa antes de darlo por perdido—, el conductor puede contestar
+  // dentro de la tolerancia pero después de que el aviso ya salió.
+  //
+  // Pintarlo verde ahí sería borrar lo que pasó: al encargado le sonó el
+  // teléfono y el tablero le enseñaría una fila impecable. El amarillo es la
+  // verdad —se resolvió, pero costó—.
+  if (marcaje.alertado_en && semaforo === 'verde') semaforo = 'amarillo';
+
   // Al adelantado no se le pone enviado_en: nunca se le preguntó, y esa fecha
   // es la evidencia de cuándo salió el mensaje. Queda dicho en la nota. Con
   // estado='respondido' el trabajador ya no se lo manda —su tic sólo toma los
