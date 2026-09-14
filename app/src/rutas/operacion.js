@@ -122,6 +122,43 @@ export default async function operacion(app) {
     return a;
   });
 
+  // ── Historial del día ─────────────────────────────────────────────────────
+  // El Tablero contesta "¿cómo va la ruta?" y por eso está de cara a la ruta:
+  // una fila por ruta, cuatro cuadritos. Esto contesta otra pregunta —"¿qué
+  // pasó hoy, en orden?"— y sólo se puede leer de cara al tiempo: qué se
+  // preguntó, a qué hora, qué contestó cada quien y desde dónde.
+  //
+  // Es la vista que se usa cuando el cliente reclama algo de hace tres días. En
+  // el Tablero eso obliga a abrir ruta por ruta; aquí es un renglón.
+  //
+  // Sólo lo que ya ocurrió: un marcaje que todavía no se envía no es historia,
+  // es agenda, y mezclarlos haría que la lista de las 5 a.m. ya estuviera llena
+  // de cosas que no han pasado.
+  app.get('/historial', async (req) => {
+    const fecha = req.query.fecha ?? new Date().toISOString().slice(0, 10);
+    return filas(
+      `SELECT m.id, m.numero, m.estado, m.semaforo, m.fuente, m.nota, m.respuesta,
+              m.programado_para, m.enviado_en, m.respondido_en,
+              m.latitud, m.longitud, m.distancia_m, m.dentro_geocerca,
+              g.nombre AS geocerca,
+              r.nombre AS ruta, r.turno, r.encargado,
+              v.clave  AS unidad,
+              c.nombre AS conductor
+         FROM marcaje m
+         JOIN asignacion a ON a.id = m.asignacion_id
+         JOIN ruta r       ON r.id = a.ruta_id
+         LEFT JOIN vehiculo  v ON v.id = a.vehiculo_id
+         LEFT JOIN conductor c ON c.id = a.conductor_id
+         LEFT JOIN geocerca  g ON g.id = m.geocerca_id
+        WHERE a.fecha = $1 AND a.estado <> 'reemplazada'
+          AND (m.enviado_en IS NOT NULL OR m.respondido_en IS NOT NULL)
+        -- Lo último arriba: un historial se lee empezando por lo que acaba de
+        -- pasar, no por lo de hace ocho horas.
+        ORDER BY COALESCE(m.respondido_en, m.enviado_en) DESC, m.numero DESC`,
+      [fecha],
+    );
+  });
+
   // ── Marcajes ──────────────────────────────────────────────────────────────
   app.get('/marcajes', async (req) => {
     const fecha = req.query.fecha ?? new Date().toISOString().slice(0, 10);

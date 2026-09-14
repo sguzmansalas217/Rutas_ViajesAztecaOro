@@ -16,6 +16,7 @@ import './estilos.css';
 const rutas = [
   { path: '/login', component: () => import('./vistas/Login.vue'), meta: { publica: true } },
   { path: '/', component: () => import('./vistas/Tablero.vue') },
+  { path: '/historial', component: () => import('./vistas/Historial.vue') },
   { path: '/por-resolver', component: () => import('./vistas/PorResolver.vue') },
   { path: '/conductores', component: () => import('./vistas/Conductores.vue') },
   { path: '/unidades', component: () => import('./vistas/Unidades.vue') },

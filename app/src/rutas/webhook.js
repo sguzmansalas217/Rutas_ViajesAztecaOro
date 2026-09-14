@@ -209,21 +209,52 @@ async function procesarMensaje(mensaje, valor) {
   let marcaje = null;
 
   if (latitud != null) {
+    //   El 4 entra aquí junto con el 3, pero por otra razón. El filtro pide la
+    //   ubicación porque la compara; la salida la pide sólo para el registro
+    //   —desde dónde arrancó— y no se juzga contra nada. El ORDER BY deja que
+    //   gane el filtro si los dos estuvieran abiertos: ahí el punto sí decide.
     marcaje = await unaFila(
       `SELECT m.id, m.numero, m.programado_para, m.enviado_en
          FROM marcaje m
          JOIN asignacion a ON a.id = m.asignacion_id
         WHERE a.conductor_id = $1
-          AND m.numero = 3
+          AND m.numero IN (3, 4)
           AND m.respondido_en IS NULL
           AND m.estado IN ('pendiente', 'enviado')
           AND a.estado = 'programada'
           AND m.programado_para BETWEEN now() - interval '4 hours'
                                     AND now() + interval '6 hours'
-        ORDER BY m.programado_para
+        ORDER BY m.numero, m.programado_para
         LIMIT 1`,
       [conductor.id],
     );
+
+    //   Y el caso normal de la salida: el botón «Ya salí» ya cerró el marcaje y
+    //   el punto llega detrás. No hay marcaje abierto al que amarrarlo, así que
+    //   sin esto se perdía. Se le pega al que se acaba de cerrar y no se toca
+    //   nada más —ni el semáforo ni la hora—: la salida la registró el botón,
+    //   esto sólo dice desde dónde.
+    if (!marcaje) {
+      const salida = await unaFila(
+        `UPDATE marcaje SET latitud = $2, longitud = $3
+          WHERE id = (SELECT m.id
+                        FROM marcaje m
+                        JOIN asignacion a ON a.id = m.asignacion_id
+                       WHERE a.conductor_id = $1
+                         AND m.numero = 4
+                         AND m.latitud IS NULL
+                         AND m.respondido_en > now() - interval '30 minutes'
+                       ORDER BY m.respondido_en DESC
+                       LIMIT 1)
+          RETURNING id`,
+        [conductor.id, latitud, longitud],
+      );
+      if (salida) {
+        log.info({ conductor: conductor.nombre, marcaje: salida.id }, 'ubicación de salida guardada');
+        await acusar(conductor, 'acuse.ubicacion_salida', '📍 Anotado, {nombre}.', salida.id);
+        return;
+      }
+    }
   }
 
   //   Lo mismo pero por escrito: «ya llegué al alcoholímetro». Va antes de la
@@ -274,7 +305,13 @@ async function procesarMensaje(mensaje, valor) {
     return;
   }
 
-  const evaluacion = latitud != null ? await evaluarUbicacion(latitud, longitud) : null;
+  // Sólo el filtro se compara contra las geocercas. En la salida el punto es
+  // informativo, y evaluarlo igual dejaría guardado un «a 14 km de OFICINA
+  // DANY» que el tablero enseñaría como si algo estuviera mal: la ruta arranca
+  // donde arranca, no hay filtro contra el cual estar lejos.
+  const evaluacion = latitud != null && marcaje.numero === 3
+    ? await evaluarUbicacion(latitud, longitud)
+    : null;
 
   let semaforo = await semaforoDe({
     numero: marcaje.numero,
@@ -310,7 +347,7 @@ async function procesarMensaje(mensaje, valor) {
      evaluacion?.geocercaId ?? null, evaluacion?.distanciaM ?? null,
      evaluacion?.dentro ?? null, semaforo,
      adelantado
-       ? `El conductor avisó antes de que se le preguntara (${marcaje.numero === 3 ? 'mandó su ubicación' : 'dijo que ya salió'})`
+       ? `El conductor avisó antes de que se le preguntara (${latitud != null ? 'mandó su ubicación' : 'dijo que ya salió'})`
        : null],
   );
 
@@ -319,7 +356,69 @@ async function procesarMensaje(mensaje, valor) {
     'marcaje registrado',
   );
 
+  // La salida cerrada con el botón todavía no dice desde dónde. Pedirlo aquí
+  // hace las veces de acuse —el mensaje empieza con «Registrado»—, así que no
+  // se manda además el genérico: serían dos mensajes para lo mismo.
+  if (marcaje.numero === 4 && latitud == null && await pedirUbicacionDeSalida(conductor, marcaje)) return;
+
   await acusarRecibo({ conductor, marcaje, semaforo, evaluacion, tieneUbicacion: latitud != null });
+}
+
+/**
+ * Le pide al conductor desde dónde salió. Devuelve true si salió el mensaje.
+ *
+ * Va DESPUÉS de que el marcaje quedó cerrado, nunca antes. La diferencia con el
+ * filtro es todo el punto: allá la ubicación es la prueba y el marcaje no se
+ * cierra sin ella; aquí es un dato de más, y si fuera la condición para cerrar,
+ * el conductor con el GPS apagado acabaría en rojo por algo informativo.
+ *
+ * Nunca por plantilla. Pagar por un dato que no cambia ningún semáforo sería
+ * gastar el margen del servicio en curiosidad.
+ */
+async function pedirUbicacionDeSalida(conductor, marcaje) {
+  try {
+    if (await parametro('ubicacion_salida.activo', true) !== true) return false;
+    if (await decidirCanal(conductor.id) !== 'libre') return false;
+
+    const cuerpo = interpolar(
+      await parametro(
+        'texto.marcaje4_ubicacion',
+        '✅ Registrado, {nombre}. Comparte tu ubicación para dejar anotado desde dónde saliste.',
+      ),
+      { nombre: (conductor.nombre ?? '').split(' ')[0] },
+    );
+
+    await pedirUbicacion({
+      conductorId: conductor.id,
+      telefono: conductor.telefono_e164,
+      texto: cuerpo,
+      marcajeId: marcaje.id,
+    });
+    return true;
+  } catch (e) {
+    // Que falle no puede tirar el marcaje, que ya quedó cerrado arriba. Como
+    // mucho se queda sin el punto y el conductor sin acuse.
+    log.warn({ err: e, conductor: conductor.nombre }, 'no se pudo pedir la ubicación de salida');
+    return false;
+  }
+}
+
+/** Un mensaje corto de vuelta, siempre gratis o nada. */
+async function acusar(conductor, clave, porOmision, marcajeId, datos = {}) {
+  try {
+    if (await parametro('acuse.activo', true) !== true) return;
+    if (await decidirCanal(conductor.id) !== 'libre') return;
+    await enviarAConductor({
+      conductorId: conductor.id,
+      telefono: conductor.telefono_e164,
+      texto: interpolar(await parametro(clave, porOmision), {
+        nombre: (conductor.nombre ?? '').split(' ')[0], ...datos,
+      }),
+      marcajeId,
+    });
+  } catch (e) {
+    log.warn({ err: e, conductor: conductor.nombre }, 'no se pudo acusar recibo');
+  }
 }
 
 /**
@@ -433,40 +532,20 @@ async function pedirleLaUbicacion(conductor, { marcajeId = null } = {}) {
  * por decir "gracias"—.
  */
 async function acusarRecibo({ conductor, marcaje, semaforo, evaluacion, tieneUbicacion }) {
-  try {
-    if (await parametro('acuse.activo', true) !== true) return;
-    if (await decidirCanal(conductor.id) !== 'libre') return;
+  // El filtro tiene acuse propio según cómo haya quedado. Decirle "filtro
+  // registrado" a quien mandó la ubicación desde otro lado es peor que no
+  // contestarle: se va tranquilo con un marcaje en rojo.
+  //
+  // 'acuse.ubicacion' quedó para el caso en que no hay geocercas activas:
+  // ahí no se puede afirmar ni que está ni que no está.
+  const clave = marcaje.numero !== 3 ? (semaforo === 'amarillo' ? 'acuse.tarde' : 'acuse.generico')
+    : !tieneUbicacion ? 'acuse.sin_ubicacion'
+    : evaluacion?.dentro === true ? 'acuse.dentro'
+    : evaluacion?.dentro === false ? 'acuse.fuera'
+    : 'acuse.ubicacion';
 
-    // El filtro tiene acuse propio según cómo haya quedado. Decirle "filtro
-    // registrado" a quien mandó la ubicación desde otro lado es peor que no
-    // contestarle: se va tranquilo con un marcaje en rojo.
-    //
-    // 'acuse.ubicacion' quedó para el caso en que no hay geocercas activas:
-    // ahí no se puede afirmar ni que está ni que no está.
-    const clave = marcaje.numero !== 3 ? (semaforo === 'amarillo' ? 'acuse.tarde' : 'acuse.generico')
-      : !tieneUbicacion ? 'acuse.sin_ubicacion'
-      : evaluacion?.dentro === true ? 'acuse.dentro'
-      : evaluacion?.dentro === false ? 'acuse.fuera'
-      : 'acuse.ubicacion';
-
-    const cuerpo = interpolar(
-      await parametro(clave, '✅ Registrado, {nombre}.'),
-      {
-        nombre: (conductor.nombre ?? '').split(' ')[0],
-        filtro: evaluacion?.nombre ?? '',
-        metros: evaluacion?.distanciaM != null ? Math.round(evaluacion.distanciaM) : '',
-      },
-    );
-
-    await enviarAConductor({
-      conductorId: conductor.id,
-      telefono: conductor.telefono_e164,
-      texto: cuerpo,
-      marcajeId: marcaje.id,
-    });
-  } catch (e) {
-    // El acuse es cortesía: que falle no puede tirar el registro del marcaje,
-    // que ya quedó guardado arriba.
-    log.warn({ err: e, conductor: conductor.nombre }, 'no se pudo acusar recibo');
-  }
+  await acusar(conductor, clave, '✅ Registrado, {nombre}.', marcaje.id, {
+    filtro: evaluacion?.nombre ?? '',
+    metros: evaluacion?.distanciaM != null ? Math.round(evaluacion.distanciaM) : '',
+  });
 }

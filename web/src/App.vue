@@ -16,6 +16,9 @@ const MENU = [
     grupo: 'Operación',
     items: [
       { a: '/', texto: 'Tablero', d: ['M3 3h7v7H3z', 'M14 3h7v7h-7z', 'M14 14h7v7h-7z', 'M3 14h7v7H3z'] },
+      // Una lista, no un reloj: el reloj ya es Tiempos y dos iconos iguales en
+      // el mismo menú se eligen mal justo cuando se va con prisa.
+      { a: '/historial', texto: 'Historial', d: ['M8 6h13', 'M8 12h13', 'M8 18h13', 'M3 6h.01', 'M3 12h.01', 'M3 18h.01'] },
       { a: '/por-resolver', texto: 'Por resolver', d: ['M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z', 'M12 9v4', 'M12 17h.01'] },
       { a: '/conductores', texto: 'Conductores', d: ['M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2', 'M9 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8z', 'M23 21v-2a4 4 0 0 0-3-3.9', 'M16 3.1a4 4 0 0 1 0 7.8'] },
     ],
