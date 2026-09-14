@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { api } from '../api.js';
+import { puedeEditar } from '../sesion.js';
 
 const hoy = new Date().toISOString().slice(0, 10);
 const fecha = ref(hoy);
@@ -63,6 +64,7 @@ function colores(a) {
 // preguntado" o "ya se le preguntó y no contesta", y son cosas opuestas.
 function detalle(m) {
   if (m.estado === 'cancelado') return 'cancelado, no se envía';
+  if (m.fuente === 'manual') return `registrado a mano ${hora(m.respondido)} · ${m.nota || 'sin nota'}`;
   if (m.respondido) {
     const como = m.semaforo === 'verde' ? 'a tiempo'
       : m.semaforo === 'amarillo' ? 'tarde o sin comprobar la ubicación'
@@ -78,7 +80,47 @@ function titulo(a, n) {
   const d = DEF[n];
   const m = marcaje(a, n);
   if (!m) return `${d.icono} ${d.nombre}: no programado`;
-  return `${d.icono} ${d.nombre} — ${d.que}\n${detalle(m)}`;
+  const pie = registrable(m) ? '\nClic para registrar que le hablaste.' : '';
+  return `${d.icono} ${d.nombre} — ${d.que}\n${detalle(m)}${pie}`;
+}
+
+// ── Registro manual ─────────────────────────────────────────────────────────
+//
+// El conductor no contestó el WhatsApp, el monitorista le habló y sí estaba.
+// Sin esto el rojo se quedaba ahí toda la mañana aunque la ruta hubiera salido
+// bien, y el tablero acababa enseñando un problema que ya no existía: nadie
+// distinguía el rojo de "voy tarde" del de "nadie lo ha localizado".
+//
+// Se queda en amarillo, no en verde. Verde quiere decir que el conductor
+// contestó él solo y a tiempo; si hubo que perseguirlo eso no pasó, y borrarlo
+// dejaría el tablero bonito y la operación ciega. El amarillo con nota es el
+// registro honesto: la ruta se resolvió, pero costó una llamada.
+const registro = ref(null);
+const guardando = ref(false);
+
+// Los que siguen abiertos: el rojo, y también el que ya salió y todavía no
+// contesta —si le hablaste antes de que venciera, no hay por qué esperar a que
+// se ponga rojo para poder anotarlo—.
+const registrable = (m) => m && !m.respondido && m.estado !== 'cancelado' && m.enviado;
+
+function abrirRegistro(a, n) {
+  const m = marcaje(a, n);
+  if (!puedeEditar.value || !registrable(m)) return;
+  registro.value = { id: m.id, nombre: DEF[n].nombre, ruta: a.ruta, conductor: a.conductor, nota: '' };
+}
+
+async function guardarRegistro() {
+  guardando.value = true;
+  try {
+    error.value = '';
+    await api.post(`/operacion/marcajes/${registro.value.id}/manual`, { nota: registro.value.nota.trim() });
+    registro.value = null;
+    await cargar();
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    guardando.value = false;
+  }
 }
 
 /**
@@ -203,6 +245,35 @@ onUnmounted(() => clearInterval(temporizador));
 
   <div v-if="error" class="error">{{ error }}</div>
 
+  <!-- Se abre al hacer clic en un marcaje que sigue abierto. La nota es lo que
+       le da sentido: dentro de tres días nadie se acuerda de por qué ese
+       amarillo está ahí, y es justo lo que se le enseña al cliente. -->
+  <div v-if="registro" class="caja" style="margin-bottom:14px">
+    <h3>Le hablé al conductor</h3>
+    <p class="tenue-txt">
+      <strong>{{ registro.nombre }}</strong> · {{ registro.ruta }} ·
+      {{ registro.conductor ?? 'sin conductor' }}
+    </p>
+    <label for="nota">¿Qué pasó?</label>
+    <input
+      id="nota"
+      v-model="registro.nota"
+      placeholder="Le hablé, ya venía en camino"
+      autocomplete="off"
+      @keyup.enter="registro.nota.trim().length >= 3 && guardarRegistro()"
+    />
+    <p class="tenue-txt">
+      Queda en <strong>amarillo</strong>, no en verde: la ruta se resolvió, pero
+      costó una llamada y eso se tiene que poder ver.
+    </p>
+    <div class="barra" style="margin-top:10px">
+      <button :disabled="guardando || registro.nota.trim().length < 3" @click="guardarRegistro">
+        {{ guardando ? 'Guardando…' : 'Registrar' }}
+      </button>
+      <button class="tenue" :disabled="guardando" @click="registro = null">Cancelar</button>
+    </div>
+  </div>
+
   <div class="barra">
     <input v-model="fecha" type="date" @change="cargar" />
     <select v-model="turno" @change="cargar">
@@ -274,7 +345,12 @@ onUnmounted(() => clearInterval(temporizador));
           </span>
         </td>
         <td v-for="n in 4" :key="n" class="col-faro">
-          <span class="faro" :class="color(a, n)" :title="titulo(a, n)">{{ SIMBOLO[color(a, n)] }}</span>
+          <span
+            class="faro"
+            :class="[color(a, n), { tocable: puedeEditar && registrable(marcaje(a, n)) }]"
+            :title="titulo(a, n)"
+            @click="abrirRegistro(a, n)"
+          >{{ SIMBOLO[color(a, n)] }}</span>
         </td>
         <td class="tenue-txt">{{ a.encargado ?? '—' }}</td>
       </tr>

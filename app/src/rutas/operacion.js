@@ -52,10 +52,15 @@ export default async function operacion(app) {
               -- punto va la ruta: un hueco en blanco se lee igual en los dos
               -- casos y son cosas distintas —uno es para hablarle al
               -- conductor, el otro es esperar—.
+              -- 'id', 'fuente' y 'nota' son para el registro manual: el tablero
+              -- necesita a cuál marcaje le pega, y al pintarlo tiene que poder
+              -- decir que ese amarillo lo puso una llamada y no WhatsApp.
               (SELECT json_agg(json_build_object(
+                        'id', m.id,
                         'numero', m.numero, 'estado', m.estado, 'semaforo', m.semaforo,
                         'programado', m.programado_para, 'enviado', m.enviado_en,
-                        'respondido', m.respondido_en)
+                        'respondido', m.respondido_en,
+                        'fuente', m.fuente, 'nota', m.nota)
                       ORDER BY m.numero)
                  FROM marcaje m WHERE m.asignacion_id = a.id) AS marcajes
          FROM asignacion a
@@ -134,18 +139,38 @@ export default async function operacion(app) {
     );
   });
 
-  // Registro manual: el conductor avisó por radio o por teléfono.
-  // Se marca la fuente para que la evidencia no se confunda con la automática.
+  // Registro manual: el conductor no contestó el WhatsApp, se le habló por
+  // teléfono o por radio y sí estaba. El marcaje se cierra desde el tablero.
+  //
+  // Queda en AMARILLO a propósito, nunca en verde. Verde quiere decir una cosa
+  // concreta —el conductor contestó él solo, por WhatsApp, dentro de la
+  // tolerancia—, y si hubo que perseguirlo eso no pasó. Pintarlo verde dejaría
+  // el tablero perfecto y borraría justo el dato por el que existe el tablero:
+  // a quién hay que estarle hablando. Amarillo lo deja registrado y visible.
+  //
+  // La nota es obligatoria. Es lo único que distingue "le hablé y ya venía en
+  // camino" de "no contestó el teléfono y su esposa dijo que ya salió", y sin
+  // ella el registro manual sería un botón para limpiar rojos.
   app.post('/marcajes/:id/manual', { preHandler: [app.exigirRol('admin', 'operador')] }, async (req, reply) => {
+    const nota = String(req.body?.nota ?? '').trim().slice(0, 500);
+    if (nota.length < 3) {
+      return reply.code(400).send({ error: 'Escribe qué pasó: es la evidencia de este registro' });
+    }
+
+    // Sólo los que siguen abiertos. Uno ya contestado no se reescribe desde
+    // aquí: la respuesta del conductor es el hecho, y esto no lo corrige.
     const m = await unaFila(
       `UPDATE marcaje
           SET estado = 'respondido', respondido_en = now(), semaforo = 'amarillo',
               fuente = 'manual', nota = $2
-        WHERE id = $1 RETURNING *`,
-      [req.params.id, String(req.body?.nota ?? '').slice(0, 500)],
+        WHERE id = $1 AND respondido_en IS NULL RETURNING *`,
+      [req.params.id, nota],
     );
-    if (!m) return reply.code(404).send({ error: 'Marcaje no encontrado' });
-    await auditar({ usuarioId: req.user.id, accion: 'marcaje_manual', entidad: 'marcaje', entidadId: m.id, ip: req.ip });
+    if (!m) return reply.code(404).send({ error: 'Ese marcaje ya no está abierto' });
+    await auditar({
+      usuarioId: req.user.id, accion: 'marcaje_manual', entidad: 'marcaje', entidadId: m.id,
+      detalle: { numero: m.numero, nota }, ip: req.ip,
+    });
     return m;
   });
 

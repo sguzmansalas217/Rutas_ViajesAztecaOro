@@ -302,6 +302,12 @@ tbody tr:hover { background: #f2f7ff; }
 .faro.pendiente { background: #eef1f7; color: #94a3b8;  border-color: #dde4ef; }
 .faro.ninguno   { background: transparent; border-color: #e8edf6; }
 
+/* Los marcajes que siguen abiertos se pueden tocar para anotar que se le habló
+   al conductor. Se avisa con el cursor y con que se levante al pasar encima:
+   un cuadrito que hace algo tiene que verse distinto de uno que no. */
+.faro.tocable        { cursor: pointer; }
+.faro.tocable:hover  { transform: translateY(-1px); filter: brightness(1.08); }
+
 th.col-faro, td.col-faro { text-align: center; padding: 6px 5px; }
 .cab-faro { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 /* El nombre del marcaje en vez del número. '1, 2, 3, 4' obliga a traducir
