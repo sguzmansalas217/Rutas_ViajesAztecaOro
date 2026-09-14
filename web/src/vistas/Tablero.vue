@@ -2,9 +2,9 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { api } from '../api.js';
 import { puedeEditar } from '../sesion.js';
+import { hoyLocal } from '../fechas.js';
 
-const hoy = new Date().toISOString().slice(0, 10);
-const fecha = ref(hoy);
+const fecha = ref(hoyLocal());
 const turno = ref('');
 const resumen = ref(null);
 const asignaciones = ref([]);

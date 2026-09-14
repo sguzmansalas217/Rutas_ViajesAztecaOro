@@ -11,9 +11,9 @@
 // pantalla, y un día son doscientos.
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { api } from '../api.js';
+import { hoyLocal } from '../fechas.js';
 
-const hoy = new Date().toISOString().slice(0, 10);
-const fecha = ref(hoy);
+const fecha = ref(hoyLocal());
 const filtro = ref('');
 const eventos = ref([]);
 const error = ref('');

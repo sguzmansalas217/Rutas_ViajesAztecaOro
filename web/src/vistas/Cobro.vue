@@ -1,8 +1,9 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { api } from '../api.js';
+import { mesLocal } from '../fechas.js';
 
-const periodo = ref(new Date().toISOString().slice(0, 7) + '-01');
+const periodo = ref(mesLocal());
 const calculo = ref(null);
 const margen = ref(null);
 const error = ref('');

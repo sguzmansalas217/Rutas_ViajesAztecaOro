@@ -2,12 +2,21 @@
 import { filas, unaFila, consultar, auditar } from '../db.js';
 import { ventanasAbiertas } from '../dominio/ventana.js';
 
+// El día de hoy en la zona del cliente, no en Greenwich.
+//
+// `toISOString()` siempre contesta en UTC, pase lo que pase con TZ. Aquí son
+// seis horas menos, así que de las 18:00 en adelante este valor por omisión
+// apuntaba a mañana y las consultas contestaban vacío justo cuando alguien
+// revisaba la tarde. 'en-CA' es el truco para que salga AAAA-MM-DD; el
+// contenedor ya corre con TZ=America/Mexico_City.
+const hoyLocal = () => new Date().toLocaleDateString('en-CA');
+
 export default async function operacion(app) {
   app.addHook('preHandler', app.autenticar);
 
   // ── Tablero ───────────────────────────────────────────────────────────────
   app.get('/tablero', async (req) => {
-    const fecha = req.query.fecha ?? new Date().toISOString().slice(0, 10);
+    const fecha = req.query.fecha ?? hoyLocal();
 
     const resumen = await unaFila(
       `SELECT count(*)::int                                              AS asignaciones,
@@ -41,7 +50,7 @@ export default async function operacion(app) {
   });
 
   app.get('/asignaciones', async (req) => {
-    const fecha = req.query.fecha ?? new Date().toISOString().slice(0, 10);
+    const fecha = req.query.fecha ?? hoyLocal();
     return filas(
       `SELECT a.id, a.estado, a.texto_origen, a.hoja, a.celda,
               r.nombre AS ruta, r.turno, r.hora_monitoreo, r.encargado,
@@ -143,7 +152,7 @@ export default async function operacion(app) {
   // es agenda, y mezclarlos haría que la lista de las 5 a.m. ya estuviera llena
   // de cosas que no han pasado.
   app.get('/historial', async (req) => {
-    const fecha = req.query.fecha ?? new Date().toISOString().slice(0, 10);
+    const fecha = req.query.fecha ?? hoyLocal();
     return filas(
       `SELECT m.id, m.numero, m.estado, m.semaforo, m.fuente, m.nota, m.respuesta,
               m.programado_para, m.enviado_en, m.respondido_en,
@@ -169,7 +178,7 @@ export default async function operacion(app) {
 
   // ── Marcajes ──────────────────────────────────────────────────────────────
   app.get('/marcajes', async (req) => {
-    const fecha = req.query.fecha ?? new Date().toISOString().slice(0, 10);
+    const fecha = req.query.fecha ?? hoyLocal();
     return filas(
       `SELECT m.*, r.nombre AS ruta, r.turno, c.nombre AS conductor, v.clave AS unidad
          FROM marcaje m
