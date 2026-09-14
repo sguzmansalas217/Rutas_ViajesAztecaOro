@@ -55,12 +55,20 @@ export default async function operacion(app) {
               -- 'id', 'fuente' y 'nota' son para el registro manual: el tablero
               -- necesita a cuál marcaje le pega, y al pintarlo tiene que poder
               -- decir que ese amarillo lo puso una llamada y no WhatsApp.
+              --
+              -- 'ubicacion' es para no tener que decir disyuntivas. El amarillo
+              -- del filtro sale por dos motivos distintos —contestó tarde, o
+              -- contestó sin mandar el punto— y sin este dato el tablero se veía
+              -- obligado a escribir «tarde o sin comprobar la ubicación», que es
+              -- justo la pregunta que el monitorista tenía que contestar.
               (SELECT json_agg(json_build_object(
                         'id', m.id,
                         'numero', m.numero, 'estado', m.estado, 'semaforo', m.semaforo,
                         'programado', m.programado_para, 'enviado', m.enviado_en,
                         'respondido', m.respondido_en,
-                        'fuente', m.fuente, 'nota', m.nota)
+                        'fuente', m.fuente, 'nota', m.nota,
+                        'ubicacion', m.latitud IS NOT NULL,
+                        'dentro', m.dentro_geocerca, 'metros', m.distancia_m)
                       ORDER BY m.numero)
                  FROM marcaje m WHERE m.asignacion_id = a.id) AS marcajes
          FROM asignacion a

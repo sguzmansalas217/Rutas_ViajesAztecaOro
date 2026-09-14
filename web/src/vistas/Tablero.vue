@@ -69,6 +69,45 @@ function colores(a) {
   return [1, 2, 3, 4].map((n) => color(a, n));
 }
 
+// Por qué quedó así un marcaje que SÍ se contestó.
+//
+// El amarillo del filtro sale por dos motivos que no se parecen: contestó
+// tarde, o contestó a tiempo pero sin mandar el punto. El primero es del
+// conductor y se le reclama; el segundo suele ser el teléfono —GPS apagado, no
+// supo compartirla— y se resuelve enseñándole. Decir «tarde o sin comprobar la
+// ubicación» dejaba al monitorista con la misma duda con la que llegó.
+//
+// El verde del filtro también merece decir dónde estaba: es la única prueba
+// que da el servicio, y verla escrita es lo que se le enseña al cliente.
+function comoQuedo(m) {
+  if (m.semaforo === 'rojo') {
+    return m.numero === 3 && m.dentro === false
+      ? `fuera del filtro, a ${distancia(m.metros)}`
+      : 'registrado';
+  }
+  if (m.numero === 3) {
+    if (!m.ubicacion) return 'a tiempo, pero no mandó la ubicación';
+    if (m.dentro === true) return m.semaforo === 'verde' ? `en el filtro (${distancia(m.metros)})` : 'tarde, pero dentro del filtro';
+    // Sin geocercas dadas de alta no se puede afirmar ni que estaba ni que no.
+    return m.semaforo === 'verde' ? 'mandó ubicación' : 'tarde';
+  }
+  return m.semaforo === 'verde' ? 'a tiempo' : 'tarde';
+}
+
+/** «, 2 fuera de tiempo y 1 sin comprobar la ubicación» — sólo lo que aplica. */
+function motivos(tarde, sinPunto) {
+  const partes = [];
+  if (tarde) partes.push(`${tarde} fuera de tiempo`);
+  if (sinPunto) partes.push(`${sinPunto} sin comprobar la ubicación`);
+  return partes.length ? `, ${partes.join(' y ')}` : '';
+}
+
+function distancia(m) {
+  const n = Number(m);
+  if (!Number.isFinite(n)) return '—';
+  return n >= 1000 ? `${(n / 1000).toFixed(1)} km` : `${Math.round(n)} m`;
+}
+
 // En qué va un marcaje, en una línea. Los cuatro casos son distintos y el
 // color solo no los separa: 'pendiente' gris puede ser "ni siquiera se le ha
 // preguntado" o "ya se le preguntó y no contesta", y son cosas opuestas.
@@ -76,10 +115,7 @@ function detalle(m) {
   if (m.estado === 'cancelado') return 'cancelado, no se envía';
   if (m.fuente === 'manual') return `registrado a mano ${hora(m.respondido)} · ${m.nota || 'sin nota'}`;
   if (m.respondido) {
-    const como = m.semaforo === 'verde' ? 'a tiempo'
-      : m.semaforo === 'amarillo' ? 'tarde o sin comprobar la ubicación'
-      : 'registrado';
-    return `contestó ${hora(m.respondido)} · ${como}`;
+    return `contestó ${hora(m.respondido)} · ${comoQuedo(m)}`;
   }
   if (m.semaforo === 'rojo') return `sin respuesta desde ${hora(m.enviado ?? m.programado)}`;
   if (m.enviado) return `enviado ${hora(m.enviado)} · esperando respuesta`;
@@ -164,7 +200,12 @@ function estatus(a) {
   // es del monitorista, y meterlos en el mismo saco borra el trabajo que costó
   // sacar la ruta —que es justo lo que hay que poder ver a fin de mes—.
   const manuales = lista.filter((x) => x.m.fuente === 'manual');
-  const tarde = lista.filter((x) => x.m.semaforo === 'amarillo' && x.m.fuente !== 'manual');
+  const amarillos = lista.filter((x) => x.m.semaforo === 'amarillo' && x.m.fuente !== 'manual');
+  // Y por lo mismo se separan éstos: «no mandó la ubicación» no es un retraso,
+  // y contarlo como tal manda al monitorista a reclamarle una hora al conductor
+  // que sí contestó a tiempo.
+  const sinPunto = amarillos.filter((x) => x.m.numero === 3 && !x.m.ubicacion);
+  const tarde = amarillos.filter((x) => !sinPunto.includes(x));
 
   if (rojos.length) {
     const { d } = rojos[rojos.length - 1];
@@ -185,7 +226,7 @@ function estatus(a) {
   }
   if (!pendientes.length) {
     if (manuales.length) {
-      const otros = tarde.length ? ` y ${tarde.length} fuera de tiempo` : '';
+      const otros = amarillos.length ? ` y ${amarillos.length} fuera de tiempo` : '';
       return {
         clase: 'amarillo',
         texto: manuales.length === lista.length ? 'Completa por teléfono' : 'Completa con llamadas',
@@ -193,11 +234,15 @@ function estatus(a) {
         lineas,
       };
     }
-    return tarde.length
+    return amarillos.length
       ? {
           clase: 'amarillo',
-          texto: 'Completa con retrasos',
-          resumen: `Los ${lista.length} marcajes quedaron registrados, ${tarde.length} fuera de tiempo o sin comprobar la ubicación. La ruta salió, pero conviene revisarla.`,
+          // El encabezado dice cuál de las dos cosas fue. «Completa con
+          // retrasos» arriba de un filtro que llegó puntual pero sin punto era
+          // mentira, y el monitorista le hablaba al conductor por una hora que
+          // sí había cumplido.
+          texto: !tarde.length ? 'Completa sin ubicación' : 'Completa con retrasos',
+          resumen: `Los ${lista.length} marcajes quedaron registrados${motivos(tarde.length, sinPunto.length)}. La ruta salió, pero conviene revisarla.`,
           lineas,
         }
       : {
