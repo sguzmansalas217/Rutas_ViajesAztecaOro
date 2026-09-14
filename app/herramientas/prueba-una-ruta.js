@@ -161,9 +161,10 @@ console.log(`\nEscrito: ${path.resolve(salida)}`);
 console.log(`Semana ${iso(lunes)} → ${iso(new Date(lunes.getTime() + 6 * 86400000))}`);
 console.log(`Ruta "${nombreRuta}" el ${DIAS[indiceHoy]} ${iso(hoy)} a las ${horaTexto}, con ${conductor}.`);
 console.log(`Hoja TELEFONOS: ${soloNombre} · unidad ${unidad} · ${telefono}`);
+// El 2 cuelga del 1, no de la hora del Excel (ver dominio/programacion.js).
 console.log(`\nCon los desfases ${d.join(', ')} los marcajes salen a las:`);
-console.log(`   1 despertar   ${enMin(base + d[0])}`);
-console.log(`   2 revisión    ${enMin(base + d[1])}`);
-console.log(`   3 filtro      ${enMin(base + 40 + d[2])}`);
-console.log(`   4 salida      ${enMin(base + 40 + d[3])}`);
+console.log(`   1 despertar   ${enMin(base + d[0])}                  texto`);
+console.log(`   2 revisión    ${enMin(base + d[0] + d[1])}   ${d[1]} min después del 1   botones`);
+console.log(`   3 filtro      ${enMin(base + 40 + d[2])}                  botón → ubicación`);
+console.log(`   4 salida      ${enMin(base + 40 + d[3])}                  botón`);
 console.log(`\nSúbelo en Cargar Excel y pon el tablero en ${iso(hoy)}.`);
