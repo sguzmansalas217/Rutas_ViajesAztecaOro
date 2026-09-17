@@ -153,6 +153,13 @@ async function procesarMensaje(mensaje, valor) {
   // sí contestó, en rojo; el que no, en verde—.
   const boton = botonId?.match(/^m(\d)-([a-z]+)-(\d+)$/);
   const marcajeDelBoton = boton ? Number(boton[3]) : null;
+
+  // Cuando el conductor usa «responder» sobre un mensaje puntual de WhatsApp,
+  // Meta manda ese mensaje original en context.id. Es la misma idea que el id
+  // del botón —lo dice el propio mensaje, no hay que adivinar— pero para
+  // texto libre, que es justo el caso del despertar (se contesta escribiendo).
+  const contextoId = mensaje.context?.id ?? null;
+
   const latitud = mensaje.location?.latitude ?? null;
   const longitud = mensaje.location?.longitude ?? null;
 
@@ -343,6 +350,31 @@ async function procesarMensaje(mensaje, valor) {
         LIMIT 1`,
       [conductor.id],
     );
+  }
+
+  // Sin botón y sin calzar ninguna frase reconocida, si el conductor citó
+  // (swipe-to-reply) un mensaje puntual de WhatsApp, Meta manda ese mensaje
+  // original en context.id. Es la misma idea que el id del botón —lo dice el
+  // propio mensaje, no hay que adivinar por fecha— y es exactamente lo que le
+  // faltaba al despertar, que se contesta escribiendo: con más de un marcaje
+  // pendiente a la vez (el conductor que se atrasa y le llegan dos o tres
+  // antes de contestar cualquiera), adivinar por «el más reciente sin
+  // contestar» amarraba la respuesta con el marcaje que no era.
+  if (!marcaje && contextoId) {
+    marcaje = await unaFila(
+      `SELECT m.id, m.numero, m.programado_para, m.enviado_en, m.respondido_en, m.alertado_en
+         FROM marcaje m
+         JOIN asignacion a ON a.id = m.asignacion_id
+         JOIN mensaje_saliente s ON s.marcaje_id = m.id
+        WHERE s.wa_message_id = $1 AND a.conductor_id = $2 AND m.estado <> 'cancelado'
+        ORDER BY s.enviado_en DESC
+        LIMIT 1`,
+      [contextoId, conductor.id],
+    );
+    if (marcaje?.respondido_en) {
+      await acusar(conductor, 'acuse.repetido', 'Ya lo teníamos registrado, {nombre}. Gracias.', marcaje.id);
+      return;
+    }
   }
 
   const adelantado = Boolean(marcaje && !marcaje.enviado_en);
