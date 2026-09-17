@@ -19,6 +19,7 @@ import { config } from './config.js';
 import { log } from './log.js';
 import { filas, consultar, unaFila, parametro, pool } from './db.js';
 import { enviarAConductor, enviarAviso } from './infra/whatsapp.js';
+import { decidirCanal } from './dominio/ventana.js';
 
 const conexion = new IORedis(config.redis.url, { maxRetriesPerRequest: null });
 const colaEnvios = new Queue('envios', { connection: conexion });
@@ -143,6 +144,29 @@ const trabajadorEnvios = new Worker(
       unidad: m.unidad ?? '',
       hora: String(m.hora_monitoreo ?? '').slice(0, 5),
     };
+
+    // El único texto que tiene plantilla aprobada es el despertar. Si el
+    // conductor no contestó el 1 a tiempo, la ventana sigue cerrada cuando
+    // toca mandar el 2, el 3 o el 4 — y sin esta guarda, infra/whatsapp.js
+    // cae al mismo default (marcaje_despertar) diga lo que diga el marcaje:
+    // «¿ya estás despierto?» en vez de «¿la unidad está bien?». No se manda
+    // nada; el marcaje ya quedó 'enviado' desde el tic() y el aviso de rojo
+    // (vencerYAlertar) es quien le avisa al encargado que ese no contestó.
+    if (m.numero !== 1 && (await decidirCanal(m.conductor_id)) === 'plantilla') {
+      await consultar(
+        `INSERT INTO mensaje_saliente (conductor_id, marcaje_id, tipo, cuerpo, estado, costo_usd, error)
+         VALUES ($1, $2, 'libre', $3, 'fallido', 0, $4)`,
+        [
+          m.conductor_id, m.id, `marcaje ${m.numero} sin enviar`,
+          'Ventana cerrada: no se manda por plantilla equivocada (no hay plantilla aprobada para este marcaje). Se avisa al encargado si no contesta.',
+        ],
+      );
+      log.warn(
+        { conductor: m.nombre, marcaje: m.id, numero: m.numero },
+        'ventana cerrada: marcaje 2/3/4 no se manda, queda para el aviso de rojo',
+      );
+      return;
+    }
 
     // El filtro ya no pide la ubicación de golpe: primero pregunta si llegó.
     // Cuando sale, el conductor muchas veces va todavía en camino, y el botón
