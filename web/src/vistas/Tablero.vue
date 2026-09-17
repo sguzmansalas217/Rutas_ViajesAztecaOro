@@ -330,14 +330,14 @@ function hora(t) {
 
 onMounted(() => {
   cargar();
-  temporizador = setInterval(cargar, 60_000);
+  temporizador = setInterval(cargar, 30_000);
 });
 onUnmounted(() => clearInterval(temporizador));
 </script>
 
 <template>
   <h2>Tablero</h2>
-  <p class="sub">Estado de los marcajes del día. Se actualiza solo cada minuto.</p>
+  <p class="sub">Estado de los marcajes del día. Se actualiza solo cada 30 segundos.</p>
 
   <div v-if="error" class="error">{{ error }}</div>
 
