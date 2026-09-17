@@ -47,5 +47,5 @@ $$ LANGUAGE plpgsql;
 
 -- Deja el valor ya guardado como número real, para que un SELECT directo
 -- (o cualquier otro sitio que haga valor::int) no tropiece con lo mismo.
-UPDATE parametro SET valor = (valor #>> '{}')::int
+UPDATE parametro SET valor = to_jsonb((valor #>> '{}')::int)
  WHERE clave = 'limite.vehiculos' AND jsonb_typeof(valor) = 'string';
