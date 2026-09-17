@@ -25,12 +25,22 @@ const CAMPOS = [
   { clave: 'marcaje3.retraso_min', def: 10 },
   { clave: 'marcaje4.retraso_min', def: 20 },
   { clave: 'marcaje.tolerancia_min', def: 15 },
+  { clave: 'alerta.espera_min', def: 5 },
 ];
 
-// Los tres de en medio son esperas: negativas no querrían decir nada. El
-// primero sí puede serlo —despertar antes de la hora del Excel es una petición
-// razonable—.
-const ESPERAS = ['marcaje2.retraso_min', 'marcaje3.retraso_min', 'marcaje4.retraso_min'];
+// Rango válido de cada campo. Los tres de en medio son esperas: negativas no
+// querrían decir nada. El primero sí puede serlo —despertar antes de la hora
+// del Excel es una petición razonable—. El aviso al encargado vive aparte
+// (Alertas.vue guarda el mismo parámetro), con su propio tope de 120: es
+// minutos de espera, no de cascada, y no tiene sentido dejarlo crecer igual.
+const RANGOS = {
+  'marcaje1.desfase_min': { min: -240, max: 240 },
+  'marcaje2.retraso_min': { min: 0, max: 240 },
+  'marcaje3.retraso_min': { min: 0, max: 240 },
+  'marcaje4.retraso_min': { min: 0, max: 240 },
+  'marcaje.tolerancia_min': { min: 1, max: 240 },
+  'alerta.espera_min': { min: 1, max: 120 },
+};
 
 const cargando = ref(true);
 const error = ref('');
@@ -74,9 +84,9 @@ const previa = computed(() => {
 
 const valido = computed(() => CAMPOS.every((c) => {
   const n = Number(v.value[c.clave]);
-  const minimo = ESPERAS.includes(c.clave) ? 0 : -240;
-  return Number.isInteger(n) && n >= minimo && n <= 240;
-}) && Number(v.value['marcaje.tolerancia_min']) >= 1);
+  const { min, max } = RANGOS[c.clave];
+  return Number.isInteger(n) && n >= min && n <= max;
+}));
 
 const cambio = computed(() => CAMPOS.some((c) => Number(v.value[c.clave]) !== Number(guardado.value[c.clave])));
 
@@ -98,14 +108,24 @@ async function cargar() {
 async function guardar() {
   error.value = ''; aviso.value = ''; guardando.value = true;
   try {
+    // La cascada (1-2-3-4 y tolerancia) queda grabada en cada marcaje al
+    // programarse, así que un cambio no mueve lo que ya está pendiente. La
+    // espera de alerta no: vencerYAlertar la lee en caliente en cada tic, así
+    // que un cambio aquí sí afecta a los marcajes que ya están en curso.
+    const soloEspera = CAMPOS.every((c) => c.clave === 'alerta.espera_min'
+      || Number(v.value[c.clave]) === Number(guardado.value[c.clave]));
+
     for (const c of CAMPOS) {
       if (Number(v.value[c.clave]) !== Number(guardado.value[c.clave])) {
         await api.put(`/catalogos/parametros/${c.clave}`, { valor: Number(v.value[c.clave]) });
       }
     }
     await cargar();
-    aviso.value = 'Guardado. Aplica a los archivos que subas de aquí en adelante; '
-      + 'los marcajes que ya estaban programados no se mueven.';
+    aviso.value = soloEspera
+      ? 'Guardado. La espera de alerta ya aplica, incluso a los marcajes pendientes ahorita.'
+      : 'Guardado. La cascada de minutos aplica a los archivos que subas de aquí en '
+        + 'adelante —los marcajes ya programados no se mueven—; la espera de alerta ya '
+        + 'aplica, incluso a los pendientes ahorita.';
   } catch (e) {
     error.value = e.message;
   } finally {
@@ -176,8 +196,17 @@ onMounted(cargar);
       <input id="tol" v-model.number="v['marcaje.tolerancia_min']" type="number" min="1" max="240" step="1" :disabled="!esAdmin" />
       <p class="tenue-txt">
         Contestar dentro de esos minutos sale <strong>verde</strong>; después,
-        <strong>amarillo</strong>. Esto no es lo mismo que la espera para el aviso
-        al encargado, que se pone en <router-link to="/alertas">Alertas</router-link>.
+        <strong>amarillo</strong>. No es lo mismo que la espera para el aviso al
+        encargado, de aquí abajo.
+      </p>
+
+      <label for="espera">Minutos de espera antes de marcar rojo</label>
+      <input id="espera" v-model.number="v['alerta.espera_min']" type="number" min="1" max="120" step="1" :disabled="!esAdmin" />
+      <p class="tenue-txt">
+        Desde que sale el mensaje. Pasado este tiempo sin respuesta se pone en
+        rojo y se avisa al encargado. Es el mismo parámetro que
+        <router-link to="/alertas">Alertas</router-link> — cambiarlo aquí o allá
+        es lo mismo.
       </p>
 
       <div v-if="esAdmin" class="barra" style="margin-top:14px">
