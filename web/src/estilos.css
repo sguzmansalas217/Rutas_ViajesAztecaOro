@@ -238,6 +238,8 @@ h3 { font-weight: 650; color: var(--texto2); }
 .tarjeta.verde .n    { color: var(--verde); }
 .tarjeta.amarillo .n { color: var(--amarillo); }
 .tarjeta.rojo .n     { color: var(--rojo); }
+.tarjeta.clicable        { cursor: pointer; }
+.tarjeta.clicable.activo { border-left-width: 6px; box-shadow: var(--sombra2); }
 
 /* ── Tablas ───────────────────────────────────────────────────────────────
    Sin overflow aquí. Un overflow distinto de visible convierte a la tabla en

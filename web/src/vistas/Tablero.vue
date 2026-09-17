@@ -282,13 +282,36 @@ function rango(a) {
 const visibles = computed(() => {
   const lista = asignaciones.value
     .filter((a) => filtros.value.every((f, i) => !f || color(a, i + 1) === f))
-    .map((a) => ({ ...a, est: estatus(a) }));
+    .map((a) => ({ ...a, est: estatus(a) }))
+    .filter((a) => !filtroClase.value || a.est.clase === filtroClase.value);
   return orden.value === 'rojo' ? [...lista].sort((x, y) => rango(x) - rango(y)) : lista;
 });
 
-const hayFiltro = computed(() => filtros.value.some(Boolean));
+// Verde/amarillo/rojo por RUTA, no por marcaje suelto: la tarjeta de arriba
+// contaba faros (hasta 4 por fila), y una fila con un solo faro amarillo
+// inflaba el amarillo tanto como una fila completa. Reusa la misma
+// clasificación que ya pinta el Estatus de cada renglón, así el número de la
+// tarjeta y lo que se ve en la tabla siempre cuentan la misma historia.
+const resumenRutas = computed(() => {
+  const c = { verde: 0, amarillo: 0, rojo: 0 };
+  for (const a of asignaciones.value) {
+    const clase = estatus(a).clase;
+    if (clase in c) c[clase]++;
+  }
+  return c;
+});
+
+// Clic en una tarjeta de color: deja ver sólo las rutas de ese estatus. Un
+// segundo clic sobre la misma la quita, igual que los filtros por marcaje.
+const filtroClase = ref('');
+function toggleClase(c) {
+  filtroClase.value = filtroClase.value === c ? '' : c;
+}
+
+const hayFiltro = computed(() => filtros.value.some(Boolean) || Boolean(filtroClase.value));
 function limpiarFiltros() {
   filtros.value = ['', '', '', ''];
+  filtroClase.value = '';
 }
 
 async function cargar() {
@@ -366,9 +389,18 @@ onUnmounted(() => clearInterval(temporizador));
   <div v-if="resumen" class="tarjetas">
     <div class="tarjeta"><div class="n">{{ resumen.unidades }}</div><div class="r">Unidades</div></div>
     <div class="tarjeta"><div class="n">{{ resumen.programadas }}</div><div class="r">Programadas</div></div>
-    <div class="tarjeta verde"><div class="n">{{ resumen.marcajes.verde }}</div><div class="r">Verde</div></div>
-    <div class="tarjeta amarillo"><div class="n">{{ resumen.marcajes.amarillo }}</div><div class="r">Amarillo</div></div>
-    <div class="tarjeta rojo"><div class="n">{{ resumen.marcajes.rojo }}</div><div class="r">Rojo</div></div>
+    <div
+      class="tarjeta verde clicable" :class="{ activo: filtroClase === 'verde' }"
+      title="Ver sólo las rutas completas" @click="toggleClase('verde')"
+    ><div class="n">{{ resumenRutas.verde }}</div><div class="r">Verde</div></div>
+    <div
+      class="tarjeta amarillo clicable" :class="{ activo: filtroClase === 'amarillo' }"
+      title="Ver sólo las rutas que salieron a medias" @click="toggleClase('amarillo')"
+    ><div class="n">{{ resumenRutas.amarillo }}</div><div class="r">Amarillo</div></div>
+    <div
+      class="tarjeta rojo clicable" :class="{ activo: filtroClase === 'rojo' }"
+      title="Ver sólo las rutas sin respuesta" @click="toggleClase('rojo')"
+    ><div class="n">{{ resumenRutas.rojo }}</div><div class="r">Rojo</div></div>
     <div class="tarjeta rojo"><div class="n">{{ resumen.por_resolver }}</div><div class="r">Por resolver</div></div>
   </div>
 
