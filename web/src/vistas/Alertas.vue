@@ -33,6 +33,16 @@ function aE164(v) {
   return `+${d}`;
 }
 
+// El camino de vuelta: lo que se guardó en E.164 se muestra y se edita en
+// los mismos 10 dígitos con los que se capturó. Nadie dicta un +52 al
+// teclear, así que nadie debería tener que verlo tampoco.
+function soloDigitos(e164) {
+  const d = String(e164 ?? '').replace(/\D/g, '');
+  if (d.length === 12 && d.startsWith('52')) return d.slice(2);
+  if (d.length === 13 && d.startsWith('521')) return d.slice(3);
+  return d.slice(-10);
+}
+
 // Uno por renglón: {texto, normalizado, valido}. Los vacíos se ignoran al
 // guardar —son huecos que se dejaron al agregar un renglón de más—.
 const filas = computed(() => telefonos.value.map((t) => {
@@ -69,7 +79,7 @@ async function cargar() {
       espera: Number(p['alerta.espera_min'] ?? 5),
       plantilla: String(p['wa.plantilla_alerta'] ?? ''),
     };
-    telefonos.value = lista.length ? [...lista] : [''];
+    telefonos.value = lista.length ? lista.map(soloDigitos) : [''];
     espera.value = guardado.value.espera;
   } catch (e) {
     error.value = e.message;
@@ -129,7 +139,7 @@ onMounted(cargar);
   <div v-if="resultados.length" class="caja" style="margin-bottom:14px">
     <h3 style="margin-top:0">Resultado de la prueba</h3>
     <p v-for="r in resultados" :key="r.telefono" class="tenue-txt" :class="{ mal: !r.ok }">
-      <strong>{{ r.telefono }}</strong>
+      <strong>{{ soloDigitos(r.telefono) }}</strong>
       <span v-if="r.principal" class="chip">principal</span> —
       <template v-if="r.ok && r.canal === 'plantilla'">
         enviado por plantilla (ese número no tiene ventana de 24 h abierta; llega, pero se cobra).
