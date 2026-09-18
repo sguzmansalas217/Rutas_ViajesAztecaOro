@@ -20,6 +20,7 @@ import { log } from './log.js';
 import { filas, consultar, unaFila, parametro, listaDeTelefonos, pool } from './db.js';
 import { enviarAConductor, enviarAviso } from './infra/whatsapp.js';
 import { decidirCanal } from './dominio/ventana.js';
+import { partirCelda } from './dominio/normalizar.js';
 
 const conexion = new IORedis(config.redis.url, { maxRetriesPerRequest: null });
 const colaEnvios = new Queue('envios', { connection: conexion });
@@ -55,10 +56,17 @@ async function tic() {
         AND m.programado_para <= now()
         AND m.programado_para >  now() - interval '15 minutes'
       RETURNING m.id, m.numero, c.id AS conductor_id, c.nombre, c.telefono_e164,
-                r.nombre AS ruta, r.hora_monitoreo, v.clave AS unidad`,
+                r.nombre AS ruta, r.hora_monitoreo, v.clave AS unidad, a.texto_origen`,
   );
 
   for (const p of pendientes) {
+    // Al conductor se le habla como el Excel de esta semana escribió su
+    // unidad (V-5), no con la clave fusionada que usa la factura (5): son
+    // la misma unidad física, pero "V-5" es lo que él reconoce, y fusionar
+    // V-5 con 5 es un tema de cobro, no de a quién le está hablando el
+    // sistema. Si por algo no se puede sacar del texto de la celda, se cae
+    // en la clave de siempre.
+    p.unidad = partirCelda(p.texto_origen ?? '').unidad || p.unidad;
     await colaEnvios.add('marcaje', p, {
       attempts: 3,
       backoff: { type: 'exponential', delay: 20_000 },
