@@ -695,11 +695,19 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
     //  que este archivo cubre: subir la semana que entra no toca la anterior.
     // La guarda del leidas > 0 no sobra: si el archivo llegara vacío o con las
     // hojas ilegibles, sin ella se daría de baja la semana entera de un golpe.
+    //
+    //  Nunca hacia el pasado, aunque el archivo cubra la semana completa:
+    //  ese día ya ocurrió y su servicio ya se cobró o se va a cobrar —si un
+    //  conductor que hoy ya no aparece en TELEFONOS sí apareció el lunes,
+    //  el lunes ya mandó sus marcajes de verdad y esa unidad debe seguir
+    //  contando para la factura del mes aunque el miércoles ya no salga en
+    //  el archivo. Reescribir el pasado por un cambio de hoy sería borrar
+    //  evidencia de un servicio que sí se dio.
     if (minFecha && maxFecha && reporte.leidas > 0) {
       const { rowCount: retiradas } = await cliente.query(
         `UPDATE asignacion
             SET estado = 'reemplazada', carga_id = $1
-          WHERE fecha BETWEEN $2 AND $3
+          WHERE fecha BETWEEN GREATEST($2::date, CURRENT_DATE) AND $3
             AND estado <> 'reemplazada'
             AND NOT (id = ANY($4::bigint[]))`,
         [cargaId, minFecha, maxFecha, [...vigentes]],
