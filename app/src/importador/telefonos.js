@@ -154,5 +154,16 @@ export function leerDirectorio(libro, fusionarV = true) {
     if (!mapa.has(k)) mapa.set(k, f);
   }
 
-  return { hoja: hoja.name, filas: filas.length, mapa, invalidos, repetidos };
+  // Igual que `mapa`, pero sólo por nombre: sirve para el conductor que
+  // cambió de unidad sin dejar de ser la misma persona. Sólo es de fiar
+  // cuando el nombre no se repite en el padrón —si hay dos JUAN, no hay
+  // forma honesta de saber a cuál se refiere una unidad nueva sin la unidad
+  // misma, y ahí manda `mapa` como siempre.
+  const porNombre = new Map();
+  for (const f of filas) {
+    if (!f.telefono) continue;
+    porNombre.set(f.nombre, [...(porNombre.get(f.nombre) ?? []), f]);
+  }
+
+  return { hoja: hoja.name, filas: filas.length, mapa, porNombre, invalidos, repetidos };
 }

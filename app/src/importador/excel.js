@@ -237,12 +237,16 @@ async function aplicarTelefono(cliente, conductorId, telefono) {
 /**
  * Resuelve el conductor por el texto COMPLETO de la celda: 'RICARDO' aparece 64
  * veces en unidades distintas, así que el nombre solo no identifica a nadie.
- * La llave real es nombre + unidad.
+ * La llave real es nombre + unidad — salvo que el nombre sea único en el
+ * padrón, en cuyo caso una unidad nueva es la misma persona que cambió de
+ * unidad, no alguien más (ver el mismo criterio en la puerta de TELEFONOS,
+ * más arriba en importarExcel).
  *
- * Si la hoja TELEFONOS trae el número de ese nombre + unidad, se le pone aquí
- * mismo. Tiene que ser en este punto y no después: `completo` es lo que decide
- * unas líneas más abajo si la asignación nace 'programada' o 'por_resolver', y
- * en una base vacía el conductor se está creando en esta misma llamada.
+ * Si la hoja TELEFONOS trae el número de ese nombre (+ unidad, o solo nombre
+ * si es único), se le pone aquí mismo. Tiene que ser en este punto y no
+ * después: `completo` es lo que decide unas líneas más abajo si la
+ * asignación nace 'programada' o 'por_resolver', y en una base vacía el
+ * conductor se está creando en esta misma llamada.
  *
  * Si no hay número, se da de alta SIN teléfono y la asignación queda
  * 'por_resolver'.
@@ -252,9 +256,16 @@ async function resolverConductor(cliente, textoCelda, nombre, unidad, crear, mem
   if (!alias) return { id: null, completo: false };
   if (memo.conductores.has(alias)) return memo.conductores.get(alias);
 
-  // La fila de la hoja de teléfonos que le toca a esta celda, si existe.
+  // La fila de la hoja de teléfonos que le toca a esta celda, si existe. Si
+  // no hay una exacta por unidad pero el nombre no se repite en el padrón,
+  // se usa esa —es la misma persona, la unidad de su fila ya no es la de hoy—.
   const k = llave(nombre, unidad);
-  const delDirectorio = tels?.dir?.mapa.get(k) ?? null;
+  let delDirectorio = tels?.dir?.mapa.get(k) ?? null;
+  if (!delDirectorio && tels) {
+    const porNombre = tels.dir.porNombre.get(nombre);
+    if (porNombre?.length === 1) delDirectorio = porNombre[0];
+  }
+  const kDirectorio = delDirectorio ? llave(delDirectorio.nombre, delDirectorio.unidad) : null;
 
   const existente = await cliente.query(
     `SELECT c.id, c.telefono_e164 IS NOT NULL AS completo
@@ -271,35 +282,55 @@ async function resolverConductor(cliente, textoCelda, nombre, unidad, crear, mem
     id = existente.rows[0].id;
     completo = existente.rows[0].completo;
   } else {
-    if (!crear) return { id: null, completo: false };
-    const { rows } = await cliente.query(
-      'INSERT INTO conductor (nombre) VALUES ($1) RETURNING id',
-      [nombre || alias],
+    // Antes de dar de alta a alguien nuevo: ¿ya hay un conductor con este
+    // nombre, SIN que nadie más lo comparta? Si sí, es la misma persona en
+    // otra unidad —se reusa su registro— en vez de duplicarlo. Si el nombre
+    // es ambiguo (dos o más), no hay de otra que darlo de alta aparte: es
+    // justo el caso de los dos OSCAR, adivinar mal manda el WhatsApp a quien
+    // no es.
+    const homonimos = await cliente.query(
+      'SELECT id, telefono_e164 IS NOT NULL AS completo FROM conductor WHERE upper(nombre) = upper($1)',
+      [nombre],
     );
-    id = rows[0].id;
-    await cliente.query(
-      `INSERT INTO conductor_alias (alias, conductor_id, origen)
-       VALUES ($1, $2, 'importador') ON CONFLICT (alias) DO NOTHING`,
-      [alias, id],
-    );
-    completo = false;
-    nuevo = true;
+    if (nombre && homonimos.rowCount === 1) {
+      id = homonimos.rows[0].id;
+      completo = homonimos.rows[0].completo;
+      await cliente.query(
+        `INSERT INTO conductor_alias (alias, conductor_id, origen)
+         VALUES ($1, $2, 'importador') ON CONFLICT (alias) DO NOTHING`,
+        [alias, id],
+      );
+    } else {
+      if (!crear) return { id: null, completo: false };
+      const { rows } = await cliente.query(
+        'INSERT INTO conductor (nombre) VALUES ($1) RETURNING id',
+        [nombre || alias],
+      );
+      id = rows[0].id;
+      await cliente.query(
+        `INSERT INTO conductor_alias (alias, conductor_id, origen)
+         VALUES ($1, $2, 'importador') ON CONFLICT (alias) DO NOTHING`,
+        [alias, id],
+      );
+      nuevo = true;
+    }
+    completo = completo ?? false;
   }
 
   if (delDirectorio && !completo) {
     const r = await aplicarTelefono(cliente, id, delDirectorio.telefono);
     if (r === 'aplicado') {
       completo = true;
-      tels.aplicadas.add(k);
+      tels.aplicadas.add(kDirectorio);
       tels.reporte.aplicados++;
     } else {
-      tels.aplicadas.add(k);
+      tels.aplicadas.add(kDirectorio);
       tels.reporte.duplicados.push({
         nombre, unidad, telefono: delDirectorio.telefono, alias,
       });
     }
   } else if (delDirectorio) {
-    tels.aplicadas.add(k);
+    tels.aplicadas.add(kDirectorio);
     tels.reporte.yaTenian++;
   }
 
@@ -468,7 +499,17 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
             // que nadie va a atender nunca, y el tablero se llena de gente que
             // no es del servicio. Si el archivo no trae hoja TELEFONOS no hay
             // padrón contra qué filtrar, así que se procesa todo como antes.
-            if (tels && !tels.dir.mapa.has(llave(nombre, unidadCanon))) {
+            //
+            // El conductor puede cambiar de unidad sin ser un conductor
+            // nuevo: si su nombre no se repite en el padrón (nadie más se
+            // llama igual), entra aunque la unidad de esta celda no sea la
+            // que trae su fila de TELEFONOS. Si el nombre sí se repite, no
+            // hay de otra que exigir la unidad exacta.
+            const enTelefonos = tels && (
+              tels.dir.mapa.has(llave(nombre, unidadCanon))
+              || tels.dir.porNombre.get(nombre)?.length === 1
+            );
+            if (tels && !enTelefonos) {
               reporte.fueraDeTelefonos++;
               continue;
             }
