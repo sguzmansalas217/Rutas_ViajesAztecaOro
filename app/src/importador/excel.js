@@ -21,6 +21,7 @@ import { createHash } from 'node:crypto';
 import ExcelJS from 'exceljs';
 
 import { enTransaccion, parametros } from '../db.js';
+import { limiteVehiculos } from '../dominio/contrato.js';
 import { log } from '../log.js';
 import {
   normalizar, esRuido, detectarEstatus, partirCelda,
@@ -197,13 +198,39 @@ async function resolverVehiculo(cliente, unidad, fusionarV, memo) {
      VALUES ($1, $2, 'importador') ON CONFLICT (alias) DO NOTHING`,
     [alias, id],
   );
-  // Una unidad nueva NUNCA entra contratada por sí sola: el contrato cubre
-  // un número fijo y quién ocupa esos lugares lo decide el operador desde
-  // la pantalla de Unidades. Si el cliente agrega camiones al Excel, se
-  // registran y se ven, pero no empiezan a gastar mensajes solos.
+  // Una unidad nueva NUNCA entra contratada por sí sola con solo aparecer en
+  // el Excel: el contrato cubre un número fijo y el archivo trae muchas más.
+  // Si SÍ está dada de alta en TELEFONOS, es distinto —esa hoja es el padrón
+  // de lo que de verdad se monitorea— y se contrata sola más abajo, en
+  // importarExcel.
   const r = { id, contratado: false, nuevo: true, clave: canonica };
   memo.vehiculos.set(alias, r);
   return r;
+}
+
+/**
+ * Si esta unidad está dada de alta en TELEFONOS y todavía no está en el
+ * contrato, se contrata sola —siempre que haya lugar—. TELEFONOS es el
+ * padrón de lo que de verdad se monitorea (justo lo mismo que decide qué
+ * conductores se procesan, ver la puerta más abajo), así que tiene sentido
+ * que también decida qué unidades entran, sin depender de que alguien vaya
+ * a la pantalla de Unidades a darle clic a cada una.
+ *
+ * El WHERE ya trae la cuenta de contratadas < límite: si no hay lugar, no
+ * intenta —se queda 'fuera_contrato' como cualquier otra, y el operador
+ * decide a mano cuál sale para que ésta entre—. Nunca revienta el tope.
+ */
+async function contratarSiEsDeTelefonos(cliente, vehiculo, limite, memo) {
+  if (!vehiculo || vehiculo.contratado || memo.contratoIntentado.has(vehiculo.id)) return;
+  memo.contratoIntentado.add(vehiculo.id);
+
+  const { rowCount } = await cliente.query(
+    `UPDATE vehiculo SET contratado = true, contratado_en = now()
+      WHERE id = $1 AND NOT contratado
+        AND (SELECT count(*) FROM vehiculo WHERE contratado) < $2`,
+    [vehiculo.id, limite],
+  );
+  if (rowCount) vehiculo.contratado = true;
 }
 
 /**
@@ -373,6 +400,7 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
   const p = await parametros();
   const fusionarV = p['importador.fusionar_prefijo_v'] !== false;
   const crearConductores = p['importador.crear_conductores'] !== false;
+  const limite = await limiteVehiculos();
 
   const libro = new ExcelJS.Workbook();
   await libro.xlsx.load(buffer);
@@ -424,7 +452,10 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
       [nombreArchivo, hash, usuarioId],
     );
     const cargaId = carga.rows[0].id;
-    const memo = { vehiculos: new Map(), conductores: new Map(), rutas: new Map() };
+    const memo = {
+      vehiculos: new Map(), conductores: new Map(), rutas: new Map(),
+      contratoIntentado: new Set(),
+    };
     // Los id de asignación que trae este archivo. Al final, lo que exista en
     // las mismas fechas y no esté en este conjunto se da por reemplazado.
     const vigentes = new Set();
@@ -521,6 +552,11 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
 
             if (!estatus) {
               vehiculo = await resolverVehiculo(cliente, unidad, fusionarV, memo);
+              // Está en TELEFONOS —si no, ni habríamos llegado aquí—, así que
+              // se contrata sola en vez de esperar a que alguien le dé clic
+              // en Unidades. Sin hoja TELEFONOS (tels es null) no hay padrón
+              // que lo respalde, y se deja el comportamiento manual de siempre.
+              if (tels) await contratarSiEsDeTelefonos(cliente, vehiculo, limite, memo);
               conductor = await resolverConductor(
                 cliente, parte, nombre, unidadCanon,
                 crearConductores, memo, tels,
