@@ -68,6 +68,16 @@ export async function parametro(clave, porDefecto = null) {
   return p[clave] ?? porDefecto;
 }
 
+// aviso.encargado_telefono empezó siendo un solo string ('+52...') y ahora
+// puede ser una lista (hasta 5). Los dos formatos conviven: un valor viejo
+// sin re-guardar sigue siendo un string suelto en la base, y esto lo trata
+// igual que una lista de uno solo en vez de obligar a una migración.
+export function listaDeTelefonos(valor) {
+  if (Array.isArray(valor)) return valor.map((t) => String(t ?? '').trim()).filter(Boolean);
+  const t = String(valor ?? '').trim();
+  return t ? [t] : [];
+}
+
 export async function fijarParametro(clave, valor, usuarioId = null) {
   await consultar(
     `INSERT INTO parametro (clave, valor, actualizado_por)

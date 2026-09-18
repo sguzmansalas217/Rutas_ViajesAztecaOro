@@ -1,7 +1,7 @@
 // Catálogos: conductores (y sus teléfonos), vehículos, alias y geocercas.
 // Aquí es donde se resuelve la basura que dejó el importador.
 import { z } from 'zod';
-import { filas, unaFila, consultar, auditar, parametros, fijarParametro } from '../db.js';
+import { filas, unaFila, consultar, auditar, parametros, fijarParametro, listaDeTelefonos } from '../db.js';
 import { aE164, normalizar } from '../dominio/normalizar.js';
 import { esProveedor } from '../dominio/proveedor.js';
 import { enviarAviso } from '../infra/whatsapp.js';
@@ -323,6 +323,12 @@ export default async function catalogos(app) {
     if (NO_NEGATIVO.test(req.params.clave) && !(Number(req.body.valor) >= 0)) {
       return reply.code(400).send({ error: 'Los minutos de espera no pueden ser negativos' });
     }
+    // Hasta 5 números para el aviso de rojo. Más que eso ya no es "avísale a
+    // Beto y a Poncho", es una lista de correo — y cada uno de más es un
+    // aviso más que se paga si sale por plantilla.
+    if (req.params.clave === 'aviso.encargado_telefono' && listaDeTelefonos(req.body.valor).length > 5) {
+      return reply.code(400).send({ error: 'Máximo 5 números para el aviso' });
+    }
     // Cambiar precio.* es ejercer la Cláusula Cuarta: queda en bitácora.
     await fijarParametro(req.params.clave, req.body.valor);
     await auditar({
@@ -341,34 +347,42 @@ export default async function catalogos(app) {
   // quiera, sin esperar a que haya un rojo de verdad.
   app.post('/alertas/prueba', { preHandler: [app.exigirRol('admin')] }, async (req, reply) => {
     const p = await parametros();
-    const telefono = String(p['aviso.encargado_telefono'] ?? '');
-    if (!telefono) return reply.code(400).send({ error: 'No hay número configurado' });
+    const telefonos = listaDeTelefonos(p['aviso.encargado_telefono']);
+    if (!telefonos.length) return reply.code(400).send({ error: 'No hay número configurado' });
 
     // Se prueba el camino completo, respaldo incluido: lo que interesa saber
     // no es si el texto libre sale —casi nunca sale— sino si el aviso LLEGA.
+    // Cada número se prueba por separado: que uno falle no debe esconder que
+    // los otros cuatro sí funcionan.
     const plantilla = String(p['wa.plantilla_alerta'] ?? 'alerta_sin_respuesta');
-    const r = await enviarAviso(
-      telefono,
-      '🔔 Prueba de alertas · Monitoreo de Rutas.\n\nSi lees esto, los avisos de rojo van a llegar a este número.',
-      { plantilla, variables: ['1', 'PRUEBA — esto es sólo una comprobación, no hay ningún marcaje en rojo'] },
-    );
+    const resultados = [];
+    for (const telefono of telefonos) {
+      const r = await enviarAviso(
+        telefono,
+        '🔔 Prueba de alertas · Monitoreo de Rutas.\n\nSi lees esto, los avisos de rojo van a llegar a este número.',
+        { plantilla, variables: ['1', 'PRUEBA — esto es sólo una comprobación, no hay ningún marcaje en rojo'] },
+      );
+      resultados.push(r.ok
+        ? { telefono, ok: true, canal: r.canal, costoUsd: r.costoUsd }
+        : {
+          telefono,
+          ok: false,
+          canal: r.canal,
+          // Que falle la plantilla casi siempre es que no existe o no está
+          // aprobada. Vale la pena decirlo con su nombre: si no, el
+          // administrador se pone a revisar el token, que está bien.
+          error: r.canal === 'plantilla'
+            ? `El texto libre no entró (la ventana de 24 h está cerrada) y la plantilla de respaldo «${plantilla}» tampoco: ${r.error}`
+            : r.error,
+          codigo: r.codigo ?? null,
+        });
+    }
+
     await auditar({
       usuarioId: req.user.id, accion: 'prueba_alerta', entidad: 'parametro',
-      detalle: { telefono, ok: r.ok, canal: r.canal, codigo: r.codigo ?? null }, ip: req.ip,
+      detalle: { resultados }, ip: req.ip,
     });
 
-    if (r.ok) return { ok: true, telefono, canal: r.canal, costoUsd: r.costoUsd };
-    return {
-      ok: false,
-      telefono,
-      canal: r.canal,
-      // Que falle la plantilla casi siempre es que no existe o no está
-      // aprobada. Vale la pena decirlo con su nombre: si no, el administrador
-      // se pone a revisar el token, que está bien.
-      error: r.canal === 'plantilla'
-        ? `El texto libre no entró (la ventana de 24 h está cerrada) y la plantilla de respaldo «${plantilla}» tampoco: ${r.error}`
-        : r.error,
-      codigo: r.codigo ?? null,
-    };
+    return { ok: resultados.every((r) => r.ok), resultados };
   });
 }
