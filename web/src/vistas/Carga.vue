@@ -78,6 +78,12 @@ onMounted(cargarHistorial);
       Hoja «{{ reporte.telefonos.hoja }}»: {{ reporte.telefonos.aplicados }} de
       {{ reporte.telefonos.filas }} teléfonos aplicados.
     </div>
+    <!-- Sólo se procesa a quien está dado de alta en TELEFONOS: el resto del
+         archivo son rutas ajenas al contrato y ni se crean. -->
+    <div v-if="reporte.fueraDeTelefonos" class="tenue-txt">
+      {{ reporte.fueraDeTelefonos }} celdas del archivo no están en TELEFONOS y se
+      ignoraron — no se crea conductor ni asignación para ellas.
+    </div>
     <div v-if="pendientesTel.length" class="aviso">
       <div v-for="(t, i) in pendientesTel" :key="i">{{ t }}</div>
     </div>

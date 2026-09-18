@@ -352,6 +352,7 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
     resueltas: 0,
     pendientes: 0,
     fueraContrato: 0,       // unidades del archivo que no cubre el contrato
+    fueraDeTelefonos: 0,    // conductores que ni se procesan: no están en TELEFONOS
     conductoresNuevos: [],
     unidadesNuevas: [],
     sinUnidad: [],
@@ -457,9 +458,22 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
           }
 
           for (const parte of partes) {
-            reporte.leidas++;
             const estatus = detectarEstatus(parte);
             const { nombre, unidad } = partirCelda(parte);
+            const unidadCanon = claveCanonica(unidad, fusionarV);
+
+            // TELEFONOS es el padrón de a quién de verdad se monitorea. El
+            // Excel del cliente trae cientos de rutas ajenas al contrato —sin
+            // este filtro cada una nace conductor y asignación 'por_resolver'
+            // que nadie va a atender nunca, y el tablero se llena de gente que
+            // no es del servicio. Si el archivo no trae hoja TELEFONOS no hay
+            // padrón contra qué filtrar, así que se procesa todo como antes.
+            if (tels && !tels.dir.mapa.has(llave(nombre, unidadCanon))) {
+              reporte.fueraDeTelefonos++;
+              continue;
+            }
+
+            reporte.leidas++;
 
             let vehiculo = null;
             let conductor = { id: null, completo: false };
@@ -467,7 +481,7 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
             if (!estatus) {
               vehiculo = await resolverVehiculo(cliente, unidad, fusionarV, memo);
               conductor = await resolverConductor(
-                cliente, parte, nombre, claveCanonica(unidad, fusionarV),
+                cliente, parte, nombre, unidadCanon,
                 crearConductores, memo, tels,
               );
               // Un conductor sale en varias celdas de la semana: el reporte
