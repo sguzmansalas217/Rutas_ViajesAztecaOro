@@ -27,7 +27,12 @@ import { enviarAConductor, pedirUbicacion } from '../infra/whatsapp.js';
  * nada. Se prefiere quedarse corto a contestarle "manda tu ubicación" a un
  * "gracias".
  */
-const AVISA_QUE_LLEGO = /alcoholim|alcohol[íi]m|filtro|ya lleg|ya estoy|aqu[íi] estoy/i;
+// 'ya estoy' a secas era demasiado ancho: agarraba «ya estoy despierto»
+// —la respuesta del despertar, nada que ver con el filtro— y le robaba el
+// marcaje 1 al 3. Se exige que diga DÓNDE («en», «aquí», «ahí») o que ya
+// venga llegando; así sigue cazando «ya estoy en el filtro» / «ya estoy
+// aquí» sin tragarse cualquier «ya estoy + lo que sea».
+const AVISA_QUE_LLEGO = /alcoholim|alcohol[íi]m|filtro|ya lleg|ya estoy (en|aqu[íi]|ah[íi]|llegando)|aqu[íi] estoy/i;
 
 /**
  * Frases con las que el conductor avisa que ya arrancó la ruta (marcaje 4).
