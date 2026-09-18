@@ -4,7 +4,7 @@
 // se facturan.
 import { ref, onMounted, computed } from 'vue';
 import { api } from '../api.js';
-import { puedeEditar } from '../sesion.js';
+import { puedeEditar, esProveedor } from '../sesion.js';
 
 const datos = ref(null);
 const error = ref('');
@@ -12,6 +12,29 @@ const aviso = ref('');
 const buscar = ref('');
 const soloFuera = ref(false);
 const guardando = ref(0);
+
+// ── Zona de peligro: reiniciar todo ─────────────────────────────────────────
+// Sólo la ve el proveedor (esProveedor, no 'admin'): el admin del cliente da
+// de alta gente, no borra la operación entera. El texto a teclear es un
+// segundo freno además del rol, para que un clic de más no borre nada.
+const FRASE_CONFIRMACION = 'BORRAR TODO';
+const confirmacion = ref('');
+const borrando = ref(false);
+const resultadoBorrado = ref(null);
+
+async function reiniciarTodo() {
+  error.value = ''; aviso.value = ''; resultadoBorrado.value = null; borrando.value = true;
+  try {
+    const r = await api.post('/catalogos/reiniciar-todo', { confirmar: confirmacion.value });
+    resultadoBorrado.value = r.borrados;
+    confirmacion.value = '';
+    await cargar();
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    borrando.value = false;
+  }
+}
 
 const lista = computed(() => {
   const v = datos.value?.vehiculos ?? [];
@@ -117,4 +140,34 @@ onMounted(cargar);
       <tr v-if="!lista.length"><td :colspan="puedeEditar ? 7 : 6" class="tenue-txt">Sin resultados.</td></tr>
     </tbody>
   </table>
+
+  <!-- Zona de peligro: nadie sin ADMIN_CORREO llega ni a ver que existe. -->
+  <div v-if="esProveedor" class="caja" style="margin-top:26px; border-color:var(--rojo)">
+    <h3 style="margin-top:0; color:var(--rojo)">Zona de peligro</h3>
+    <p class="tenue-txt">
+      Borra <strong>todos</strong> los conductores y unidades —y lo que cuelga
+      de ellos: asignaciones, marcajes, historial de mensajes—. No se puede
+      deshacer. Es para limpiar datos de prueba antes de ir a producción,
+      nunca con operación real cargada.
+    </p>
+    <div v-if="resultadoBorrado" class="ok">
+      Borrado: {{ resultadoBorrado.conductor }} conductores,
+      {{ resultadoBorrado.vehiculo }} unidades,
+      {{ resultadoBorrado.asignacion }} asignaciones,
+      {{ resultadoBorrado.mensaje_saliente }} mensajes salientes,
+      {{ resultadoBorrado.mensaje_entrante }} entrantes.
+    </div>
+    <label for="confirmar">
+      Escribe <strong>{{ FRASE_CONFIRMACION }}</strong> para activar el botón
+    </label>
+    <input id="confirmar" v-model="confirmacion" autocomplete="off" style="max-width:260px" />
+    <div class="barra" style="margin-top:10px">
+      <button
+        :disabled="borrando || confirmacion !== FRASE_CONFIRMACION"
+        style="background:var(--rojo)" @click="reiniciarTodo"
+      >
+        {{ borrando ? 'Borrando…' : 'Borrar todo' }}
+      </button>
+    </div>
+  </div>
 </template>

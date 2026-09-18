@@ -1,7 +1,7 @@
 // Catálogos: conductores (y sus teléfonos), vehículos, alias y geocercas.
 // Aquí es donde se resuelve la basura que dejó el importador.
 import { z } from 'zod';
-import { filas, unaFila, consultar, auditar, parametros, fijarParametro, listaDeTelefonos } from '../db.js';
+import { filas, unaFila, consultar, auditar, parametros, fijarParametro, listaDeTelefonos, enTransaccion } from '../db.js';
 import { aE164, normalizar } from '../dominio/normalizar.js';
 import { esProveedor } from '../dominio/proveedor.js';
 import { enviarAviso } from '../infra/whatsapp.js';
@@ -391,5 +391,40 @@ export default async function catalogos(app) {
     });
 
     return { ok: resultados.every((r) => r.ok), resultados };
+  });
+
+  // ── Reiniciar operación (solo el proveedor) ─────────────────────────────────
+  //
+  // Borra conductores, unidades y todo lo que cuelga de ellos: asignaciones,
+  // marcajes, mensajes. Es para limpiar datos de prueba antes de ir a
+  // producción de verdad —no hay «deshacer»—. No cuelga del rol 'admin' a
+  // propósito: el admin del cliente puede dar de alta gente, no borrar la
+  // operación entera. Sólo la cuenta del proveedor (ADMIN_CORREO) la ve.
+  //
+  // El parámetro exigirConfirmacion no es adorno: protege contra un clic de
+  // más o un doble envío, no contra quien no debería estar aquí —eso ya lo
+  // hace esProveedor()—.
+  app.post('/reiniciar-todo', async (req, reply) => {
+    if (!esProveedor(req)) return reply.code(403).send({ error: 'Sin permisos para esta operación' });
+    if (req.body?.confirmar !== 'BORRAR TODO') {
+      return reply.code(400).send({ error: 'Falta confirmar: manda { confirmar: "BORRAR TODO" }' });
+    }
+
+    const conteo = await enTransaccion(async (cliente) => {
+      const tablas = ['mensaje_saliente', 'mensaje_entrante', 'asignacion', 'conductor', 'vehiculo'];
+      const resultado = {};
+      for (const tabla of tablas) {
+        const { rowCount } = await cliente.query(`DELETE FROM ${tabla}`);
+        resultado[tabla] = rowCount;
+      }
+      return resultado;
+    });
+
+    await auditar({
+      usuarioId: req.user.id, accion: 'reiniciar_todo', entidad: 'sistema',
+      detalle: conteo, ip: req.ip,
+    });
+
+    return { ok: true, borrados: conteo };
   });
 }
