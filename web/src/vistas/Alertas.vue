@@ -129,11 +129,15 @@ onMounted(cargar);
   <div v-if="resultados.length" class="caja" style="margin-bottom:14px">
     <h3 style="margin-top:0">Resultado de la prueba</h3>
     <p v-for="r in resultados" :key="r.telefono" class="tenue-txt" :class="{ mal: !r.ok }">
-      <strong>{{ r.telefono }}</strong> —
+      <strong>{{ r.telefono }}</strong>
+      <span v-if="r.principal" class="chip">principal</span> —
       <template v-if="r.ok && r.canal === 'plantilla'">
         enviado por plantilla (ese número no tiene ventana de 24 h abierta; llega, pero se cobra).
       </template>
       <template v-else-if="r.ok">enviado por texto libre, sin costo.</template>
+      <template v-else-if="!r.principal">
+        no llegó — es secundario, sin respaldo de plantilla: solo le llega si escribió algo hoy.
+      </template>
       <template v-else>no llegó: {{ r.error }}</template>
     </p>
   </div>
@@ -149,7 +153,16 @@ onMounted(cargar);
       <h3>A quiénes les llega</h3>
 
       <label>WhatsApp que reciben las alertas</label>
+      <p class="tenue-txt" style="margin-top:0">
+        El <strong>primero es el principal</strong>: a ése se le garantiza el aviso,
+        pagando plantilla si hace falta. A los demás (secundarios) sólo les llega
+        si escribieron algo al número del sistema en las últimas 24 h — nunca se
+        paga plantilla por ellos.
+      </p>
       <div v-for="(f, i) in filas" :key="i" class="barra" style="margin-bottom:6px">
+        <span class="chip" style="min-width:74px; text-align:center">
+          {{ i === 0 ? 'principal' : 'secundario' }}
+        </span>
         <input
           v-model="telefonos[i]" :disabled="!esAdmin"
           placeholder="449 255 7153"

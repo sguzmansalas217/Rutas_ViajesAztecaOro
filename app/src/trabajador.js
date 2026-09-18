@@ -113,11 +113,17 @@ async function vencerYAlertar() {
   // Hasta 5 números, cada uno se manda por separado: el fallo de uno (número
   // mal capturado, ventana cerrada y sin plantilla) no debe tumbar el aviso a
   // los demás.
-  for (const telefonoAviso of telefonosAviso) {
-    const r = await enviarAviso(telefonoAviso, texto, {
-      plantilla,
-      variables: [String(vencidos.length), items.join(' · ') + extra],
-    });
+  //
+  // Sólo el PRIMERO —el principal— tiene respaldo de plantilla: es el único
+  // al que se le garantiza que le llegue, pagando si hace falta. A los demás
+  // (secundarios) sólo les llega si su propia ventana de 24 h está abierta
+  // —o sea, si le escribieron algo al número del sistema en el día—; si no,
+  // no se les manda nada por plantilla y el aviso a ese número simplemente no
+  // sale. Es la forma de que 5 destinatarios no multipliquen por 5 el costo
+  // de cada rojo.
+  for (const [i, telefonoAviso] of telefonosAviso.entries()) {
+    const respaldo = i === 0 ? { plantilla, variables: [String(vencidos.length), items.join(' · ') + extra] } : null;
+    const r = await enviarAviso(telefonoAviso, texto, respaldo);
 
     if (r.ok) {
       // Cuando el aviso sale por plantilla se está pagando por avisar. Con un
