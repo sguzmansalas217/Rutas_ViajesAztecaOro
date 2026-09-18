@@ -246,16 +246,14 @@ async function procesarMensaje(mensaje, valor) {
   // 'enviado_en IS NOT NULL' es la condición honesta: sólo se puede responder lo
   // que ya salió. Y de haber dos abiertos, el que vale es el más reciente.
   //
-  // ⚑ Excepción: la UBICACIÓN sí puede llegar antes de la pregunta.
-  //   El conductor llega al filtro y manda su ubicación sin esperar a que el
-  //   sistema se la pida. Con la regla de arriba eso se perdía —o peor, se
-  //   contaba como respuesta del marcaje anterior que siguiera abierto— y
-  //   minutos después le llegaba igual la petición de algo que ya hizo.
-  //
-  //   Aquí no hay el riesgo que motivó la regla: no se está dando por bueno un
-  //   "sí" cualquiera, se está recibiendo la prueba misma —el punto donde está—
-  //   y esa prueba se juzga contra la geocerca igual que si la hubiéramos
-  //   pedido. La ventana es hacia adelante nada más hasta el filtro del día.
+  // El conductor solo puede contestar lo que YA se le mandó, nunca algo que
+  // todavía no le llega —aunque escriba o mande su ubicación por su cuenta—.
+  // Antes esto tenía una excepción («adelantado»: se le creía si avisaba
+  // antes de la pregunta), y esa excepción fue justo la que le robó el
+  // marcaje 1 al 3 cuando el regex de «ya estoy» se confundió: encontró un
+  // marcaje 3 que ni se había mandado y lo dio por bueno. 'enviado_en IS NOT
+  // NULL' en las tres consultas de aquí abajo cierra esa puerta: si nadie le
+  // ha preguntado nada, no hay nada que "adelantar".
   if (!marcaje && latitud != null) {
     //   El 4 entra aquí junto con el 3, pero por otra razón. El filtro pide la
     //   ubicación porque la compara; la salida la pide sólo para el registro
@@ -274,6 +272,7 @@ async function procesarMensaje(mensaje, valor) {
         WHERE a.conductor_id = $1
           AND m.numero IN (3, 4)
           AND m.respondido_en IS NULL
+          AND m.enviado_en IS NOT NULL
           AND m.estado <> 'cancelado'
           AND a.estado = 'programada'
           AND m.programado_para BETWEEN now() - interval '4 hours'
@@ -331,14 +330,15 @@ async function procesarMensaje(mensaje, valor) {
   //   Lo mismo pero por escrito: «ya llegué al alcoholímetro». Va antes de la
   //   regla general a propósito. Si se dejara caer abajo, ese texto cerraría el
   //   marcaje que estuviera abierto en ese momento —la revisión, por ejemplo—
-  //   y nadie le pediría nunca la ubicación del filtro.
+  //   y nadie le pediría nunca la ubicación del filtro. Sólo entra si el
+  //   filtro YA se mandó (pedirleLaUbicacion exige enviado_en) — si no, este
+  //   texto sigue de largo y cae en el respaldo general de abajo.
   if (!marcaje && texto && !SALIO_A_RUTA.test(texto) && AVISA_QUE_LLEGO.test(texto)) {
     if (await pedirleLaUbicacion(conductor)) return;
   }
 
-  //   Y el aviso de que ya arrancó, que también puede llegar antes de que se
-  //   pregunte. Aquí no hay nada que comprobar contra un mapa, así que el
-  //   marcaje sí se da por cumplido.
+  //   Y el aviso de que ya arrancó. Igual que arriba: sólo cuenta si la
+  //   salida YA se le preguntó, nunca antes.
   if (!marcaje && texto && SALIO_A_RUTA.test(texto)) {
     marcaje = await unaFila(
       `SELECT m.id, m.numero, m.programado_para, m.enviado_en, m.alertado_en
@@ -347,6 +347,7 @@ async function procesarMensaje(mensaje, valor) {
         WHERE a.conductor_id = $1
           AND m.numero = 4
           AND m.respondido_en IS NULL
+          AND m.enviado_en IS NOT NULL
           AND m.estado <> 'cancelado'
           AND a.estado = 'programada'
           AND m.programado_para BETWEEN now() - interval '4 hours'
@@ -596,8 +597,9 @@ async function acusar(conductor, clave, porOmision, marcajeId, datos = {}) {
  *
  * En los dos casos el marcaje NO se da por cumplido. El texto y el botón no
  * prueban nada —lo mismo se tocan desde su casa—; lo único que se puede
- * comparar contra la geocerca es la ubicación. Cuando la mande entra por el
- * camino de la ubicación adelantada y ahí sí cuenta.
+ * comparar contra la geocerca es la ubicación. Cuando la mande, entra por el
+ * camino de la ubicación (más arriba en procesarMensaje) y ahí sí cuenta —
+ * siempre que el filtro ya se le haya preguntado; nunca antes.
  *
  * Quedarse callado sería lo peor de los dos mundos: avisó, no pasó nada
  * visible, y veinte minutos después le llega la petición de algo que él ya da
@@ -644,6 +646,11 @@ async function pedirleLaUbicacion(conductor, { marcajeId = null } = {}) {
           WHERE a.conductor_id = $1
             AND m.numero = 3
             AND m.respondido_en IS NULL
+            -- Sólo el filtro que YA se mandó. Si el conductor escribe «ya
+            -- llegué» antes de que le toque el marcaje 3, no hay nada que
+            -- adelantarle: el mensaje se ignora aquí y sigue de largo hasta
+            -- el respaldo general, que no encuentra nada abierto tampoco.
+            AND m.enviado_en IS NOT NULL
             -- 'vencido' también: el filtro que ya se pintó de rojo sigue siendo
             -- el filtro, y si el conductor avisa tarde hay que pedirle el punto
             -- igual. Es la única forma de que ese rojo pase a amarillo con la
