@@ -2,6 +2,7 @@
 import { importarExcel } from '../importador/excel.js';
 import { filas, unaFila, auditar } from '../db.js';
 import { programarSemana } from '../dominio/programacion.js';
+import { resincronizarAsignaciones } from '../dominio/contrato.js';
 
 export default async function importacion(app) {
   app.addHook('preHandler', app.autenticar);
@@ -16,8 +17,15 @@ export default async function importacion(app) {
     const buffer = await archivo.toBuffer();
     const reporte = await importarExcel(buffer, archivo.filename, req.user.id);
 
+    // Una unidad que este mismo archivo acaba de contratar sola (por estar en
+    // TELEFONOS) puede traer asignaciones de cargas anteriores que nacieron
+    // 'fuera_contrato' cuando todavía no estaba contratada. Sin esto se
+    // quedan fantasma: la unidad ya cuenta para el contrato, pero esas rutas
+    // de antes nunca se programan ni se cobran.
+    const resync = await resincronizarAsignaciones();
+
     // Deja listos los 4 marcajes de cada asignación programada de la semana.
-    const programados = await programarSemana(reporte.semanaInicio, reporte.semanaFin);
+    const programados = await programarSemana(reporte.semanaInicio, reporte.semanaFin) + resync.programados;
 
     await auditar({
       usuarioId: req.user.id, accion: 'carga_excel', entidad: 'carga', entidadId: reporte.cargaId,
