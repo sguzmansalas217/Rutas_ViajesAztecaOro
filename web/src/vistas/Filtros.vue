@@ -92,6 +92,19 @@ function usar(u) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+// Precarga un filtro ya existente en el formulario de arriba para moverlo o
+// cambiarle el radio. No hay endpoint de "editar por id" —el nombre es la
+// llave— así que la forma de mover uno es repetir su nombre EXACTO con
+// coordenadas nuevas; guardar() ya lo actualiza en vez de duplicarlo. Esto
+// sólo evita que haya que ir a copiar el nombre a mano letra por letra.
+function editar(g) {
+  nombre.value = g.nombre;
+  punto.value = `${g.latitud}, ${g.longitud}`;
+  radio.value = g.radio_m;
+  aviso.value = '';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 const hora = (t) => (t ? new Date(t).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 
 onMounted(cargar);
@@ -125,8 +138,11 @@ onMounted(cargar);
     <label for="nom">Nombre</label>
     <input id="nom" v-model="nombre" placeholder="FILTRO SAN LUIS" autocomplete="off" />
     <p class="tenue-txt">
-      Si repites un nombre que ya existe, se actualizan sus coordenadas en vez
-      de crear otro.
+      Es la llave del filtro: si repites un nombre que ya existe, se actualizan
+      sus coordenadas y su radio en vez de crear otro. Por eso <strong>no se
+      puede renombrar</strong> uno ya dado de alta —cambiarle el nombre crea uno
+      nuevo aparte—. Usa "Editar" en la tabla de abajo para traer aquí uno
+      existente y moverlo o ajustarle el radio sin tocar su nombre.
     </p>
 
     <label for="pto">Coordenadas</label>
@@ -182,7 +198,8 @@ onMounted(cargar);
           <template v-if="g.usos">{{ g.dentro }} de {{ g.usos }} dentro</template>
           <span v-else class="tenue-txt">todavía ninguno</span>
         </td>
-        <td v-if="puedeEditar">
+        <td v-if="puedeEditar" class="barra">
+          <button class="tenue" @click="editar(g)">Editar</button>
           <button class="tenue" :disabled="alternando === g.id" @click="alternar(g)">
             {{ g.activo ? 'Apagar' : 'Encender' }}
           </button>
