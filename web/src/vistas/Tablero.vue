@@ -120,7 +120,8 @@ function detalle(m) {
   if (m.estado === 'cancelado') return 'cancelado, no se envía';
   if (m.fuente === 'manual') return `registrado a mano ${hora(m.respondido)} · ${m.nota || 'sin nota'}`;
   if (m.respondido) {
-    return `contestó ${hora(m.respondido)} · ${comoQuedo(m)}`;
+    const nota = m.nota ? ` · ${m.nota}` : '';
+    return `contestó ${hora(m.respondido)} · ${comoQuedo(m)}${nota}`;
   }
   if (m.semaforo === 'rojo') return `sin respuesta desde ${hora(m.enviado ?? m.programado)}`;
   if (m.enviado) return `enviado ${hora(m.enviado)} · esperando respuesta`;
@@ -131,7 +132,8 @@ function titulo(a, n) {
   const d = DEF[n];
   const m = marcaje(a, n);
   if (!m) return `${d.icono} ${d.nombre}: no programado`;
-  const pie = registrable(m) ? '\nClic para registrar que le hablaste.' : '';
+  const pie = registrable(m) ? '\nClic para registrar que le hablaste.'
+    : comentable(m) ? '\nClic para agregar un comentario, sin tocar el semáforo ni la ubicación.' : '';
   return `${d.icono} ${d.nombre} — ${d.que}\n${detalle(m)}${pie}`;
 }
 
@@ -154,17 +156,29 @@ const guardando = ref(false);
 // se ponga rojo para poder anotarlo—.
 const registrable = (m) => m && !m.respondido && m.estado !== 'cancelado' && m.enviado;
 
+// El conductor sí contestó, pero el punto cayó fuera del filtro —o no hay
+// filtro activo con qué compararlo—. Aquí no se corrige nada: la ubicación es
+// la evidencia real del viaje. Sólo se deja anotado el porqué, por ejemplo que
+// se confirmó por teléfono que sí llegó y el filtro está mal puesto. Semáforo
+// y ubicación se quedan tal cual quedaron.
+const comentable = (m) => m && m.respondido && m.enviado;
+
 function abrirRegistro(a, n) {
   const m = marcaje(a, n);
-  if (!puedeEditar.value || !registrable(m)) return;
-  registro.value = { id: m.id, nombre: DEF[n].nombre, ruta: a.ruta, conductor: a.conductor, nota: '' };
+  if (!puedeEditar.value) return;
+  if (registrable(m)) {
+    registro.value = { id: m.id, modo: 'manual', nombre: DEF[n].nombre, ruta: a.ruta, conductor: a.conductor, nota: '' };
+  } else if (comentable(m)) {
+    registro.value = { id: m.id, modo: 'comentario', nombre: DEF[n].nombre, ruta: a.ruta, conductor: a.conductor, nota: '' };
+  }
 }
 
 async function guardarRegistro() {
   guardando.value = true;
   try {
     error.value = '';
-    await api.post(`/operacion/marcajes/${registro.value.id}/manual`, { nota: registro.value.nota.trim() });
+    const ruta = registro.value.modo === 'comentario' ? 'comentario' : 'manual';
+    await api.post(`/operacion/marcajes/${registro.value.id}/${ruta}`, { nota: registro.value.nota.trim() });
     registro.value = null;
     await cargar();
   } catch (e) {
@@ -345,26 +359,31 @@ onUnmounted(() => clearInterval(temporizador));
        le da sentido: dentro de tres días nadie se acuerda de por qué ese
        amarillo está ahí, y es justo lo que se le enseña al cliente. -->
   <div v-if="registro" class="caja" style="margin-bottom:14px">
-    <h3>Le hablé al conductor</h3>
+    <h3>{{ registro.modo === 'comentario' ? 'Agregar comentario' : 'Le hablé al conductor' }}</h3>
     <p class="tenue-txt">
       <strong>{{ registro.nombre }}</strong> · {{ registro.ruta }} ·
       {{ registro.conductor ?? 'sin conductor' }}
     </p>
-    <label for="nota">¿Qué pasó?</label>
+    <label for="nota">{{ registro.modo === 'comentario' ? 'Comentario' : '¿Qué pasó?' }}</label>
     <input
       id="nota"
       v-model="registro.nota"
-      placeholder="Le hablé, ya venía en camino"
+      :placeholder="registro.modo === 'comentario' ? 'Se confirmó por teléfono, el filtro está mal puesto' : 'Le hablé, ya venía en camino'"
       autocomplete="off"
       @keyup.enter="registro.nota.trim().length >= 3 && guardarRegistro()"
     />
     <p class="tenue-txt">
-      Queda en <strong>amarillo</strong>, no en verde: la ruta se resolvió, pero
-      costó una llamada y eso se tiene que poder ver.
+      <template v-if="registro.modo === 'comentario'">
+        No cambia el semáforo ni la ubicación: sólo queda anotado el porqué.
+      </template>
+      <template v-else>
+        Queda en <strong>amarillo</strong>, no en verde: la ruta se resolvió, pero
+        costó una llamada y eso se tiene que poder ver.
+      </template>
     </p>
     <div class="barra" style="margin-top:10px">
       <button :disabled="guardando || registro.nota.trim().length < 3" @click="guardarRegistro">
-        {{ guardando ? 'Guardando…' : 'Registrar' }}
+        {{ guardando ? 'Guardando…' : (registro.modo === 'comentario' ? 'Guardar comentario' : 'Registrar') }}
       </button>
       <button class="tenue" :disabled="guardando" @click="registro = null">Cancelar</button>
     </div>
@@ -452,7 +471,7 @@ onUnmounted(() => clearInterval(temporizador));
         <td v-for="n in 4" :key="n" class="col-faro">
           <span
             class="faro"
-            :class="[color(a, n), { tocable: puedeEditar && registrable(marcaje(a, n)) }]"
+            :class="[color(a, n), { tocable: puedeEditar && (registrable(marcaje(a, n)) || comentable(marcaje(a, n))) }]"
             :title="titulo(a, n)"
             @click="abrirRegistro(a, n)"
           >{{ simbolo(a, n) }}</span>
