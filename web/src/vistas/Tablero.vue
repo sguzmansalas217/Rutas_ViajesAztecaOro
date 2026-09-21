@@ -498,11 +498,11 @@ onUnmounted(() => clearInterval(temporizador));
               <button
                 class="ok" title="Sí, le hablé" :disabled="confirmandoGuardando"
                 @click.stop="confirmarManual(marcaje(a, n).id)"
-              >✓ Sí</button>
+              >✓</button>
               <button
                 class="no" title="Cancelar" :disabled="confirmandoGuardando"
                 @click.stop="confirmando = null"
-              >✗ No</button>
+              >✗</button>
             </div>
           </div>
         </td>
