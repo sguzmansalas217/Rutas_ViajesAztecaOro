@@ -310,7 +310,23 @@ tbody tr:hover { background: #f2f7ff; }
 .faro.tocable        { cursor: pointer; }
 .faro.tocable:hover  { transform: translateY(-1px); filter: brightness(1.08); }
 
-th.col-faro, td.col-faro { text-align: center; padding: 6px 5px; }
+th.col-faro, td.col-faro { text-align: center; padding: 6px 5px; position: relative; }
+
+/* Palomita/tachita al confirmar "le hablé", justo encima del cuadrito donde
+   se dio clic. Sin campo de texto: es un sí o no, no un formulario. */
+.confirma-inline {
+  position: absolute; top: -6px; left: 50%; transform: translate(-50%, -100%);
+  display: flex; gap: 4px; padding: 5px; z-index: 5;
+  background: #fff; border: 1px solid #dde4ef; border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(20, 30, 60, .18);
+}
+.confirma-inline button {
+  width: 26px; height: 26px; border-radius: 6px; border: 1px solid transparent;
+  font-size: 14px; font-weight: 700; line-height: 1; cursor: pointer;
+}
+.confirma-inline .ok { background: #16a34a; color: #fff; border-color: #15803d; }
+.confirma-inline .no { background: #eef1f7; color: #64748b; border-color: #dde4ef; }
+.confirma-inline button:disabled { opacity: .6; cursor: default; }
 
 /* ── Historial ────────────────────────────────────────────────────────────
    Un renglón por ruta y lo más apretado que se deja leer. Una mañana son

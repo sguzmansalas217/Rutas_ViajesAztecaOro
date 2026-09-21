@@ -211,14 +211,11 @@ export default async function operacion(app) {
   // el tablero perfecto y borraría justo el dato por el que existe el tablero:
   // a quién hay que estarle hablando. Amarillo lo deja registrado y visible.
   //
-  // La nota es obligatoria. Es lo único que distingue "le hablé y ya venía en
-  // camino" de "no contestó el teléfono y su esposa dijo que ya salió", y sin
-  // ella el registro manual sería un botón para limpiar rojos.
+  // Sin nota: es palomita o tachita en el tablero, no un formulario. La nota
+  // libre quedó para /comentario, que sí se puede usar después sobre este
+  // mismo marcaje si hace falta dejar escrito el detalle.
   app.post('/marcajes/:id/manual', { preHandler: [app.exigirRol('admin', 'operador')] }, async (req, reply) => {
-    const nota = String(req.body?.nota ?? '').trim().slice(0, 500);
-    if (nota.length < 3) {
-      return reply.code(400).send({ error: 'Escribe qué pasó: es la evidencia de este registro' });
-    }
+    const nota = String(req.body?.nota ?? '').trim().slice(0, 500) || 'Confirmado desde el tablero';
 
     // Sólo los que siguen abiertos. Uno ya contestado no se reescribe desde
     // aquí: la respuesta del conductor es el hecho, y esto no lo corrige.

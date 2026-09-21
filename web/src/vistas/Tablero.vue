@@ -132,7 +132,7 @@ function titulo(a, n) {
   const d = DEF[n];
   const m = marcaje(a, n);
   if (!m) return `${d.icono} ${d.nombre}: no programado`;
-  const pie = registrable(m) ? '\nClic para registrar que le hablaste.'
+  const pie = registrable(m) ? '\nClic para confirmar que le hablaste.'
     : comentable(m) ? '\nClic para agregar un comentario, sin tocar el semáforo ni la ubicación.' : '';
   return `${d.icono} ${d.nombre} — ${d.que}\n${detalle(m)}${pie}`;
 }
@@ -146,8 +146,7 @@ function titulo(a, n) {
 //
 // Se queda en amarillo, no en verde. Verde quiere decir que el conductor
 // contestó él solo y a tiempo; si hubo que perseguirlo eso no pasó, y borrarlo
-// dejaría el tablero bonito y la operación ciega. El amarillo con nota es el
-// registro honesto: la ruta se resolvió, pero costó una llamada.
+// dejaría el tablero bonito y la operación ciega.
 const registro = ref(null);
 const guardando = ref(false);
 
@@ -163,13 +162,32 @@ const registrable = (m) => m && !m.respondido && m.estado !== 'cancelado' && m.e
 // y ubicación se quedan tal cual quedaron.
 const comentable = (m) => m && m.respondido && m.enviado;
 
+// Confirmar "le hablé" ya no pide escribir nada: clic en el rojo, palomita o
+// tachita ahí mismo. Guarda el id del marcaje con la ventanita abierta.
+const confirmando = ref(null);
+const confirmandoGuardando = ref(false);
+
 function abrirRegistro(a, n) {
   const m = marcaje(a, n);
   if (!puedeEditar.value) return;
   if (registrable(m)) {
-    registro.value = { id: m.id, modo: 'manual', nombre: DEF[n].nombre, ruta: a.ruta, conductor: a.conductor, nota: '' };
+    confirmando.value = confirmando.value === m.id ? null : m.id;
   } else if (comentable(m)) {
     registro.value = { id: m.id, modo: 'comentario', nombre: DEF[n].nombre, ruta: a.ruta, conductor: a.conductor, nota: '' };
+  }
+}
+
+async function confirmarManual(id) {
+  confirmandoGuardando.value = true;
+  try {
+    error.value = '';
+    await api.post(`/operacion/marcajes/${id}/manual`, {});
+    confirmando.value = null;
+    await cargar();
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    confirmandoGuardando.value = false;
   }
 }
 
@@ -177,8 +195,7 @@ async function guardarRegistro() {
   guardando.value = true;
   try {
     error.value = '';
-    const ruta = registro.value.modo === 'comentario' ? 'comentario' : 'manual';
-    await api.post(`/operacion/marcajes/${registro.value.id}/${ruta}`, { nota: registro.value.nota.trim() });
+    await api.post(`/operacion/marcajes/${registro.value.id}/comentario`, { nota: registro.value.nota.trim() });
     registro.value = null;
     await cargar();
   } catch (e) {
@@ -475,6 +492,16 @@ onUnmounted(() => clearInterval(temporizador));
             :title="titulo(a, n)"
             @click="abrirRegistro(a, n)"
           >{{ simbolo(a, n) }}</span>
+          <div v-if="confirmando === marcaje(a, n)?.id" class="confirma-inline">
+            <button
+              class="ok" title="Sí, le hablé" :disabled="confirmandoGuardando"
+              @click.stop="confirmarManual(marcaje(a, n).id)"
+            >✓</button>
+            <button
+              class="no" title="Cancelar" :disabled="confirmandoGuardando"
+              @click.stop="confirmando = null"
+            >✗</button>
+          </div>
         </td>
         <td class="tenue-txt">{{ a.encargado ?? '—' }}</td>
       </tr>
