@@ -617,6 +617,15 @@ ol.canales li { margin-bottom: 6px; }
 }
 .caja h3 { margin: 0 0 16px; font-size: 14px; }
 
+/* Vista previa del filtro: el radio en metros no dice nada solo, el círculo
+   sobre el mapa real sí. z-index bajo a propósito —Leaflet mete sus propios
+   z-index internos y sin acotarlo se puede montar sobre el popover del
+   tablero o el menú lateral en pantallas chicas. */
+.mapa-previa {
+  height: 260px; margin: 14px 0 6px; border-radius: 10px;
+  border: 1px solid var(--borde); z-index: 1;
+}
+
 .cuenta dl {
   display: grid; grid-template-columns: auto 1fr; gap: 9px 18px;
   margin: 0 0 16px; font-size: 13px;

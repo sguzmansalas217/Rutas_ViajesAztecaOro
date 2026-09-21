@@ -5,9 +5,19 @@
 // compara contra nada: el marcaje sale verde por haber contestado a tiempo,
 // esté el conductor en el filtro o en su casa. Es la mitad del marcaje 3 que
 // faltaba, y no se notaba porque desde fuera se ve igual.
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { api } from '../api.js';
 import { puedeEditar } from '../sesion.js';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+// Los iconos por defecto de Leaflet apuntan a rutas relativas que Vite no
+// resuelve al empaquetar; sin esto el marcador sale sin imagen.
+import iconoMarcador from 'leaflet/dist/images/marker-icon.png';
+import iconoMarcador2x from 'leaflet/dist/images/marker-icon-2x.png';
+import iconoSombra from 'leaflet/dist/images/marker-shadow.png';
+L.Icon.Default.mergeOptions({
+  iconUrl: iconoMarcador, iconRetinaUrl: iconoMarcador2x, shadowUrl: iconoSombra,
+});
 
 const cercas = ref([]);
 const recibidas = ref([]);
@@ -107,6 +117,53 @@ function editar(g) {
 
 const hora = (t) => (t ? new Date(t).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 
+// ── Vista previa del filtro en mapa ─────────────────────────────────────────
+// El radio en metros no dice nada por sí solo —¿300 m cubre el estacionamiento
+// o se mete a la calle de al lado?—. El círculo sobre el mapa real sí lo dice
+// de un vistazo, antes de guardar y no después de que un conductor salga rojo
+// por un radio mal puesto.
+const elMapa = ref(null);
+let mapa = null;
+let circulo = null;
+let marcador = null;
+
+function pintarMapa() {
+  if (!coords.value) return;
+  const { lat, lon } = coords.value;
+
+  if (!mapa) {
+    mapa = L.map(elMapa.value, { attributionControl: false });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap',
+    }).addTo(mapa);
+    marcador = L.marker([lat, lon]).addTo(mapa);
+    circulo = L.circle([lat, lon], { radius: radio.value, color: '#2e5395', fillOpacity: 0.15 }).addTo(mapa);
+  } else {
+    marcador.setLatLng([lat, lon]);
+    circulo.setLatLng([lat, lon]);
+    circulo.setRadius(radio.value);
+  }
+  mapa.fitBounds(circulo.getBounds(), { padding: [20, 20] });
+}
+
+// nextTick: el <div> del mapa sólo existe cuando coords.value ya es válido
+// (v-if más abajo); sin esperar el tick, Leaflet se monta sobre un elemento
+// que Vue todavía no puso en el DOM.
+watch([coords, radio], async () => {
+  if (!coords.value) {
+    // El <div> desaparece con el v-if; si no se suelta el mapa aquí, la
+    // próxima vez que haya coordenadas válidas Leaflet se monta sobre un
+    // elemento que Vue ya desechó.
+    if (mapa) { mapa.remove(); mapa = null; circulo = null; marcador = null; }
+    return;
+  }
+  await nextTick();
+  pintarMapa();
+});
+
+onUnmounted(() => { if (mapa) mapa.remove(); });
+
 onMounted(cargar);
 </script>
 
@@ -168,6 +225,12 @@ onMounted(cargar);
       Apretarlo más no sirve: el GPS del celular no trae precisión en el mensaje
       y un teléfono en modo «ubicación aproximada» reporta con kilómetros de
       error sin que se pueda distinguir.
+    </p>
+
+    <div v-if="coords" ref="elMapa" class="mapa-previa"></div>
+    <p v-if="coords" class="tenue-txt">
+      El círculo es el radio exacto: cualquier ubicación dentro cuenta como
+      "en el filtro". Acércate o aléjate en el mapa para ver bien el tamaño.
     </p>
 
     <button :disabled="guardando || !valido" @click="guardar">
