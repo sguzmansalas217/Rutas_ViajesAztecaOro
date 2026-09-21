@@ -310,7 +310,11 @@ tbody tr:hover { background: #f2f7ff; }
 .faro.tocable        { cursor: pointer; }
 .faro.tocable:hover  { transform: translateY(-1px); filter: brightness(1.08); }
 
-th.col-faro, td.col-faro { text-align: center; padding: 6px 5px; position: relative; }
+th.col-faro, td.col-faro { text-align: center; padding: 6px 5px; }
+/* Sólo el td, no el th: el th ya trae position:sticky de la regla general de
+   arriba, y position:relative aquí con más especificidad se lo pisaba —el
+   encabezado se soltaba y se montaba sobre las primeras filas. */
+td.col-faro { position: relative; }
 
 /* Palomita/tachita al confirmar "le hablé", justo encima del cuadrito donde
    se dio clic. Sin campo de texto: es un sí o no, no un formulario. */
