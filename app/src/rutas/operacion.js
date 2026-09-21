@@ -239,35 +239,6 @@ export default async function operacion(app) {
     return m;
   });
 
-  // Comentario sobre un marcaje que YA se contestó —el filtro cayó fuera de la
-  // geocerca, o no hay ninguna geocerca activa contra qué comparar—. A
-  // diferencia del registro manual de arriba, esto NUNCA toca semáforo,
-  // estado ni la ubicación: el conductor sí contestó y esa ubicación es la
-  // evidencia real, correcta o no. Esto sólo deja escrito el porqué —"se
-  // confirmó por teléfono que sí llegó, la geocerca está mal puesta"— sin
-  // reescribir lo que pasó. Se agrega, no se reemplaza: si ya había una nota
-  // (la que arma notaDe() en el webhook, por ejemplo), no se pierde.
-  app.post('/marcajes/:id/comentario', { preHandler: [app.exigirRol('admin', 'operador')] }, async (req, reply) => {
-    const comentario = String(req.body?.nota ?? '').trim().slice(0, 500);
-    if (comentario.length < 3) {
-      return reply.code(400).send({ error: 'Escribe el comentario' });
-    }
-
-    const m = await unaFila(
-      `UPDATE marcaje
-          SET nota = CASE WHEN nota IS NULL OR nota = '' THEN $2 ELSE nota || E'\n' || $2 END
-        WHERE id = $1 AND enviado_en IS NOT NULL
-        RETURNING *`,
-      [req.params.id, comentario],
-    );
-    if (!m) return reply.code(404).send({ error: 'Ese marcaje todavía no se ha enviado' });
-    await auditar({
-      usuarioId: req.user.id, accion: 'marcaje_comentario', entidad: 'marcaje', entidadId: m.id,
-      detalle: { numero: m.numero, comentario }, ip: req.ip,
-    });
-    return m;
-  });
-
   app.get('/bitacora', { preHandler: [app.exigirRol('admin')] }, async (req) =>
     filas(
       `SELECT b.*, u.correo FROM bitacora b LEFT JOIN usuario u ON u.id = b.usuario_id

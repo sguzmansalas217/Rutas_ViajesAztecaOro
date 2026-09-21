@@ -132,8 +132,7 @@ function titulo(a, n) {
   const d = DEF[n];
   const m = marcaje(a, n);
   if (!m) return `${d.icono} ${d.nombre}: no programado`;
-  const pie = registrable(m) ? '\nClic para confirmar que le hablaste.'
-    : comentable(m) ? '\nClic para agregar un comentario, sin tocar el semáforo ni la ubicación.' : '';
+  const pie = registrable(m) ? '\nClic para confirmar que le hablaste.' : '';
   return `${d.icono} ${d.nombre} — ${d.que}\n${detalle(m)}${pie}`;
 }
 
@@ -147,35 +146,23 @@ function titulo(a, n) {
 // Se queda en amarillo, no en verde. Verde quiere decir que el conductor
 // contestó él solo y a tiempo; si hubo que perseguirlo eso no pasó, y borrarlo
 // dejaría el tablero bonito y la operación ciega.
-const registro = ref(null);
-const guardando = ref(false);
-
+//
 // Todo lo que está en rojo: sin contestar, o el filtro contestado desde fuera
 // de la geocerca (los dos únicos motivos de rojo, ver geocerca.js
 // semaforoDe). Los dos se resuelven igual: llamada, palomita o tachita, sin
 // escribir nada. La ubicación de por sí no se toca —eso lo hace el backend—,
-// sólo el semáforo pasa a amarillo.
+// sólo el semáforo pasa a amarillo. Lo que ya está en amarillo o verde no se
+// puede tocar desde aquí: no hay comentario ni edición para eso.
 const registrable = (m) => m && m.semaforo === 'rojo' && m.estado !== 'cancelado' && m.enviado;
 
-// Ya contestó y no está en rojo (amarillo o verde). Aquí sí puede hacer falta
-// dejar algo escrito sin tocar nada más —una aclaración, un detalle para el
-// cliente—. No aplica al rojo por filtro: ese ya se resuelve arriba con la
-// llamada.
-const comentable = (m) => m && m.respondido && m.enviado && m.semaforo !== 'rojo';
-
-// Confirmar "le hablé" ya no pide escribir nada: clic en el rojo, palomita o
-// tachita ahí mismo. Guarda el id del marcaje con la ventanita abierta.
+// Guarda el id del marcaje con la ventanita de confirmar abierta.
 const confirmando = ref(null);
 const confirmandoGuardando = ref(false);
 
 function abrirRegistro(a, n) {
   const m = marcaje(a, n);
-  if (!puedeEditar.value) return;
-  if (registrable(m)) {
-    confirmando.value = confirmando.value === m.id ? null : m.id;
-  } else if (comentable(m)) {
-    registro.value = { id: m.id, modo: 'comentario', nombre: DEF[n].nombre, ruta: a.ruta, conductor: a.conductor, nota: '' };
-  }
+  if (!puedeEditar.value || !registrable(m)) return;
+  confirmando.value = confirmando.value === m.id ? null : m.id;
 }
 
 async function confirmarManual(id) {
@@ -189,20 +176,6 @@ async function confirmarManual(id) {
     error.value = e.message;
   } finally {
     confirmandoGuardando.value = false;
-  }
-}
-
-async function guardarRegistro() {
-  guardando.value = true;
-  try {
-    error.value = '';
-    await api.post(`/operacion/marcajes/${registro.value.id}/comentario`, { nota: registro.value.nota.trim() });
-    registro.value = null;
-    await cargar();
-  } catch (e) {
-    error.value = e.message;
-  } finally {
-    guardando.value = false;
   }
 }
 
@@ -373,40 +346,6 @@ onUnmounted(() => clearInterval(temporizador));
 
   <div v-if="error" class="error">{{ error }}</div>
 
-  <!-- Se abre al hacer clic en un marcaje que sigue abierto. La nota es lo que
-       le da sentido: dentro de tres días nadie se acuerda de por qué ese
-       amarillo está ahí, y es justo lo que se le enseña al cliente. -->
-  <div v-if="registro" class="caja" style="margin-bottom:14px">
-    <h3>{{ registro.modo === 'comentario' ? 'Agregar comentario' : 'Le hablé al conductor' }}</h3>
-    <p class="tenue-txt">
-      <strong>{{ registro.nombre }}</strong> · {{ registro.ruta }} ·
-      {{ registro.conductor ?? 'sin conductor' }}
-    </p>
-    <label for="nota">{{ registro.modo === 'comentario' ? 'Comentario' : '¿Qué pasó?' }}</label>
-    <input
-      id="nota"
-      v-model="registro.nota"
-      :placeholder="registro.modo === 'comentario' ? 'Se confirmó por teléfono, el filtro está mal puesto' : 'Le hablé, ya venía en camino'"
-      autocomplete="off"
-      @keyup.enter="registro.nota.trim().length >= 3 && guardarRegistro()"
-    />
-    <p class="tenue-txt">
-      <template v-if="registro.modo === 'comentario'">
-        No cambia el semáforo ni la ubicación: sólo queda anotado el porqué.
-      </template>
-      <template v-else>
-        Queda en <strong>amarillo</strong>, no en verde: la ruta se resolvió, pero
-        costó una llamada y eso se tiene que poder ver.
-      </template>
-    </p>
-    <div class="barra" style="margin-top:10px">
-      <button :disabled="guardando || registro.nota.trim().length < 3" @click="guardarRegistro">
-        {{ guardando ? 'Guardando…' : (registro.modo === 'comentario' ? 'Guardar comentario' : 'Registrar') }}
-      </button>
-      <button class="tenue" :disabled="guardando" @click="registro = null">Cancelar</button>
-    </div>
-  </div>
-
   <div class="barra">
     <input v-model="fecha" type="date" @change="cargar" />
     <select v-model="turno" @change="cargar">
@@ -489,7 +428,7 @@ onUnmounted(() => clearInterval(temporizador));
         <td v-for="n in 4" :key="n" class="col-faro">
           <span
             class="faro"
-            :class="[color(a, n), { tocable: puedeEditar && (registrable(marcaje(a, n)) || comentable(marcaje(a, n))) }]"
+            :class="[color(a, n), { tocable: puedeEditar && registrable(marcaje(a, n)) }]"
             :title="titulo(a, n)"
             @click="abrirRegistro(a, n)"
           >{{ simbolo(a, n) }}</span>
