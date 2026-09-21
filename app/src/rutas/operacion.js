@@ -202,31 +202,36 @@ export default async function operacion(app) {
     );
   });
 
-  // Registro manual: el conductor no contestó el WhatsApp, se le habló por
-  // teléfono o por radio y sí estaba. El marcaje se cierra desde el tablero.
+  // Registro manual: se le habló por teléfono o radio y sí estaba. Cubre los
+  // DOS motivos de rojo (geocerca.js semaforoDe): no contestó, o contestó el
+  // filtro desde fuera de la geocerca. El marcaje se cierra desde el tablero
+  // con sólo palomita/tachita, sin escribir nada.
   //
   // Queda en AMARILLO a propósito, nunca en verde. Verde quiere decir una cosa
   // concreta —el conductor contestó él solo, por WhatsApp, dentro de la
-  // tolerancia—, y si hubo que perseguirlo eso no pasó. Pintarlo verde dejaría
-  // el tablero perfecto y borraría justo el dato por el que existe el tablero:
-  // a quién hay que estarle hablando. Amarillo lo deja registrado y visible.
+  // tolerancia y, si aplica, dentro del filtro—, y si hubo que perseguirlo o
+  // corregirlo por teléfono eso no pasó. Amarillo lo deja registrado y
+  // visible sin mentir que salió limpio.
   //
-  // Sin nota: es palomita o tachita en el tablero, no un formulario. La nota
-  // libre quedó para /comentario, que sí se puede usar después sobre este
-  // mismo marcaje si hace falta dejar escrito el detalle.
+  // respondido_en se conserva con COALESCE si ya existía (contestó, sólo que
+  // desde fuera del filtro): ese es el momento real en que contestó, la
+  // llamada del monitorista no lo cambia. La nota se AGREGA, no se reemplaza
+  // —si el conductor sí contestó, notaDe() ya dejó algo escrito ("fuera del
+  // filtro, a X m") y eso no se debe perder—.
   app.post('/marcajes/:id/manual', { preHandler: [app.exigirRol('admin', 'operador')] }, async (req, reply) => {
     const nota = String(req.body?.nota ?? '').trim().slice(0, 500) || 'Confirmado desde el tablero';
 
-    // Sólo los que siguen abiertos. Uno ya contestado no se reescribe desde
-    // aquí: la respuesta del conductor es el hecho, y esto no lo corrige.
+    // Sólo los que están en rojo: uno ya resuelto (amarillo o verde) no se
+    // reescribe desde aquí.
     const m = await unaFila(
       `UPDATE marcaje
-          SET estado = 'respondido', respondido_en = now(), semaforo = 'amarillo',
-              fuente = 'manual', nota = $2
-        WHERE id = $1 AND respondido_en IS NULL RETURNING *`,
+          SET estado = 'respondido', respondido_en = COALESCE(respondido_en, now()),
+              semaforo = 'amarillo', fuente = 'manual',
+              nota = CASE WHEN nota IS NULL OR nota = '' THEN $2 ELSE nota || E'\n' || $2 END
+        WHERE id = $1 AND semaforo = 'rojo' RETURNING *`,
       [req.params.id, nota],
     );
-    if (!m) return reply.code(404).send({ error: 'Ese marcaje ya no está abierto' });
+    if (!m) return reply.code(404).send({ error: 'Ese marcaje ya no está en rojo' });
     await auditar({
       usuarioId: req.user.id, accion: 'marcaje_manual', entidad: 'marcaje', entidadId: m.id,
       detalle: { numero: m.numero, nota }, ip: req.ip,

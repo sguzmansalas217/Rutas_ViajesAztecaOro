@@ -150,17 +150,18 @@ function titulo(a, n) {
 const registro = ref(null);
 const guardando = ref(false);
 
-// Los que siguen abiertos: el rojo, y también el que ya salió y todavía no
-// contesta —si le hablaste antes de que venciera, no hay por qué esperar a que
-// se ponga rojo para poder anotarlo—.
-const registrable = (m) => m && !m.respondido && m.estado !== 'cancelado' && m.enviado;
+// Todo lo que está en rojo: sin contestar, o el filtro contestado desde fuera
+// de la geocerca (los dos únicos motivos de rojo, ver geocerca.js
+// semaforoDe). Los dos se resuelven igual: llamada, palomita o tachita, sin
+// escribir nada. La ubicación de por sí no se toca —eso lo hace el backend—,
+// sólo el semáforo pasa a amarillo.
+const registrable = (m) => m && m.semaforo === 'rojo' && m.estado !== 'cancelado' && m.enviado;
 
-// El conductor sí contestó, pero el punto cayó fuera del filtro —o no hay
-// filtro activo con qué compararlo—. Aquí no se corrige nada: la ubicación es
-// la evidencia real del viaje. Sólo se deja anotado el porqué, por ejemplo que
-// se confirmó por teléfono que sí llegó y el filtro está mal puesto. Semáforo
-// y ubicación se quedan tal cual quedaron.
-const comentable = (m) => m && m.respondido && m.enviado;
+// Ya contestó y no está en rojo (amarillo o verde). Aquí sí puede hacer falta
+// dejar algo escrito sin tocar nada más —una aclaración, un detalle para el
+// cliente—. No aplica al rojo por filtro: ese ya se resuelve arriba con la
+// llamada.
+const comentable = (m) => m && m.respondido && m.enviado && m.semaforo !== 'rojo';
 
 // Confirmar "le hablé" ya no pide escribir nada: clic en el rojo, palomita o
 // tachita ahí mismo. Guarda el id del marcaje con la ventanita abierta.
