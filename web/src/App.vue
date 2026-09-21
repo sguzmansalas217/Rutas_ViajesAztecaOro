@@ -16,18 +16,17 @@ const MENU = [
     grupo: 'Operación',
     items: [
       { a: '/', texto: 'Tablero', d: ['M3 3h7v7H3z', 'M14 3h7v7h-7z', 'M14 14h7v7h-7z', 'M3 14h7v7H3z'] },
+      { a: '/carga', texto: 'Cargar Excel', roles: ['admin', 'operador'], d: ['M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4', 'M17 8l-5-5-5 5', 'M12 3v12'] },
       // Una lista, no un reloj: el reloj ya es Tiempos y dos iconos iguales en
       // el mismo menú se eligen mal justo cuando se va con prisa.
       { a: '/historial', texto: 'Historial', d: ['M8 6h13', 'M8 12h13', 'M8 18h13', 'M3 6h.01', 'M3 12h.01', 'M3 18h.01'] },
-      { a: '/por-resolver', texto: 'Por resolver', d: ['M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z', 'M12 9v4', 'M12 17h.01'] },
-      { a: '/conductores', texto: 'Conductores', d: ['M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2', 'M9 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8z', 'M23 21v-2a4 4 0 0 0-3-3.9', 'M16 3.1a4 4 0 0 1 0 7.8'] },
     ],
   },
   {
     grupo: 'Administración',
     items: [
       { a: '/unidades', texto: 'Unidades', d: ['M1 3h15v13H1z', 'M16 8h4l3 3v5h-7z', 'M5.5 21a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z', 'M18.5 21a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z'] },
-      { a: '/carga', texto: 'Cargar Excel', roles: ['admin', 'operador'], d: ['M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4', 'M17 8l-5-5-5 5', 'M12 3v12'] },
+      { a: '/conductores', texto: 'Conductores', d: ['M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2', 'M9 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8z', 'M23 21v-2a4 4 0 0 0-3-3.9', 'M16 3.1a4 4 0 0 1 0 7.8'] },
       { a: '/filtros', texto: 'Filtros', d: ['M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z', 'M12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z'] },
       { a: '/tiempos', texto: 'Tiempos', roles: ['admin'], d: ['M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z', 'M12 6v6l4 2'] },
       { a: '/alertas', texto: 'Alertas', roles: ['admin'], d: ['M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9', 'M13.7 21a2 2 0 0 1-3.4 0'] },
