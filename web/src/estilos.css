@@ -320,13 +320,16 @@ td.col-faro { position: relative; }
    se dio clic. Sin campo de texto: es un sí o no, no un formulario. */
 .confirma-inline {
   position: absolute; top: -6px; left: 50%; transform: translate(-50%, -100%);
-  display: flex; gap: 4px; padding: 5px; z-index: 30;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 8px; z-index: 30; white-space: nowrap;
   background: #fff; border: 1px solid #dde4ef; border-radius: 8px;
   box-shadow: 0 4px 14px rgba(20, 30, 60, .18);
 }
+.confirma-inline .pregunta { font-size: 11px; font-weight: 600; color: var(--texto2); }
+.confirma-inline .botones { display: flex; gap: 4px; }
 .confirma-inline button {
-  width: 26px; height: 26px; border-radius: 6px; border: 1px solid transparent;
-  font-size: 14px; font-weight: 700; line-height: 1; cursor: pointer;
+  padding: 4px 10px; border-radius: 6px; border: 1px solid transparent;
+  font-size: 12px; font-weight: 700; line-height: 1.4; cursor: pointer;
 }
 .confirma-inline .ok { background: #16a34a; color: #fff; border-color: #15803d; }
 .confirma-inline .no { background: #eef1f7; color: #64748b; border-color: #dde4ef; }

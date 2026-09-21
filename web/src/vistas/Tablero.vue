@@ -493,14 +493,17 @@ onUnmounted(() => clearInterval(temporizador));
             @click="abrirRegistro(a, n)"
           >{{ simbolo(a, n) }}</span>
           <div v-if="confirmando === marcaje(a, n)?.id" class="confirma-inline">
-            <button
-              class="ok" title="Sí, le hablé" :disabled="confirmandoGuardando"
-              @click.stop="confirmarManual(marcaje(a, n).id)"
-            >✓</button>
-            <button
-              class="no" title="Cancelar" :disabled="confirmandoGuardando"
-              @click.stop="confirmando = null"
-            >✗</button>
+            <span class="pregunta">¿Le hablaste?</span>
+            <div class="botones">
+              <button
+                class="ok" title="Sí, le hablé" :disabled="confirmandoGuardando"
+                @click.stop="confirmarManual(marcaje(a, n).id)"
+              >✓ Sí</button>
+              <button
+                class="no" title="Cancelar" :disabled="confirmandoGuardando"
+                @click.stop="confirmando = null"
+              >✗ No</button>
+            </div>
           </div>
         </td>
         <td class="tenue-txt">{{ a.encargado ?? '—' }}</td>
