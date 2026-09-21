@@ -234,7 +234,10 @@ async function contratarSiEsDeTelefonos(cliente, vehiculo, limite, memo) {
 }
 
 /**
- * Escribe el teléfono en un conductor que no lo tenía.
+ * Escribe el teléfono de un conductor. La hoja TELEFONOS del Excel manda: si
+ * el cliente le cambió el número ahí, aquí se pisa el que hubiera en el
+ * sistema. Nunca al revés —un número editado a mano en el portal se pierde en
+ * la siguiente carga, a propósito—. El teléfono correcto vive en el Excel.
  *
  * La guarda del NOT EXISTS evita reventar contra el UNIQUE de telefono_e164.
  * No es paranoia: el Excel genera VARIOS registros de conductor para la misma
@@ -247,15 +250,20 @@ async function contratarSiEsDeTelefonos(cliente, vehiculo, limite, memo) {
  * Se prefiere el registro con más asignaciones, que es el bueno; el otro se
  * reporta como duplicado para que se atienda desde el portal.
  *
- * @returns {'aplicado'|'duplicado'}
+ * @returns {'aplicado'|'igual'|'duplicado'}
  */
 async function aplicarTelefono(cliente, conductorId, telefono) {
+  const actual = await cliente.query(
+    'SELECT telefono_e164 FROM conductor WHERE id = $1',
+    [conductorId],
+  );
+  if (actual.rows[0]?.telefono_e164 === telefono) return 'igual';
+
   const { rowCount } = await cliente.query(
     `UPDATE conductor
         SET telefono_e164 = $2, actualizado_en = now()
       WHERE id = $1
-        AND telefono_e164 IS NULL
-        AND NOT EXISTS (SELECT 1 FROM conductor o WHERE o.telefono_e164 = $2)`,
+        AND NOT EXISTS (SELECT 1 FROM conductor o WHERE o.id <> $1 AND o.telefono_e164 = $2)`,
     [conductorId, telefono],
   );
   return rowCount ? 'aplicado' : 'duplicado';
@@ -344,21 +352,20 @@ async function resolverConductor(cliente, textoCelda, nombre, unidad, crear, mem
     completo = completo ?? false;
   }
 
-  if (delDirectorio && !completo) {
+  if (delDirectorio) {
     const r = await aplicarTelefono(cliente, id, delDirectorio.telefono);
+    tels.aplicadas.add(kDirectorio);
     if (r === 'aplicado') {
       completo = true;
-      tels.aplicadas.add(kDirectorio);
       tels.reporte.aplicados++;
+    } else if (r === 'igual') {
+      completo = true;
+      tels.reporte.yaTenian++;
     } else {
-      tels.aplicadas.add(kDirectorio);
       tels.reporte.duplicados.push({
         nombre, unidad, telefono: delDirectorio.telefono, alias,
       });
     }
-  } else if (delDirectorio) {
-    tels.aplicadas.add(kDirectorio);
-    tels.reporte.yaTenian++;
   }
 
   const r = { id, completo, ...(nuevo ? { nuevo: true } : {}) };
@@ -435,7 +442,7 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
       hoja: dir.hoja,
       filas: dir.filas,
       aplicados: 0,      // números que se escribieron en un conductor
-      yaTenian: 0,       // el conductor ya tenía número: no se pisa
+      yaTenian: 0,       // el conductor ya tenía ese mismo número, sin cambio
       invalidos: dir.invalidos,   // no son un teléfono válido (dígitos de más/menos)
       repetidos: dir.repetidos,   // el mismo número en dos filas de la hoja
       duplicados: [],    // el número ya lo tiene otro registro de la misma persona
@@ -618,8 +625,9 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
     // ── Filas del padrón que no salieron en la programación de esta semana ──
     //  La hoja TELEFONOS es un padrón, no el rol: trae gente que esta semana
     //  no maneja. Si esa persona ya existe de una carga anterior, su número se
-    //  aplica aquí. Se busca por nombre + unidad contra el histórico de
-    //  asignaciones, que es lo único que amarra una persona a una unidad.
+    //  sincroniza aquí —se pise o no el que ya tenía—. Se busca por nombre +
+    //  unidad contra el histórico de asignaciones, que es lo único que amarra
+    //  una persona a una unidad.
     if (tels) {
       for (const [k, f] of tels.dir.mapa) {
         if (tels.aplicadas.has(k)) continue;
@@ -631,7 +639,6 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
              JOIN vehiculo   v ON v.id = a.vehiculo_id
             WHERE upper(c.nombre) = $1
               AND v.clave = $2
-              AND c.telefono_e164 IS NULL
             GROUP BY c.id
             ORDER BY count(*) DESC, c.id`,
           [f.nombre, f.unidad],
@@ -649,6 +656,7 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
 
         const estado = await aplicarTelefono(cliente, rows[0].id, f.telefono);
         if (estado === 'aplicado') reporte.telefonos.aplicados++;
+        else if (estado === 'igual') reporte.telefonos.yaTenian++;
         else reporte.telefonos.duplicados.push({
           nombre: f.nombre, unidad: f.unidadBruta, telefono: f.telefono,
         });
