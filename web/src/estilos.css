@@ -320,7 +320,7 @@ td.col-faro { position: relative; }
    se dio clic. Sin campo de texto: es un sí o no, no un formulario. */
 .confirma-inline {
   position: absolute; top: -6px; left: 50%; transform: translate(-50%, -100%);
-  display: flex; gap: 4px; padding: 5px; z-index: 5;
+  display: flex; gap: 4px; padding: 5px; z-index: 30;
   background: #fff; border: 1px solid #dde4ef; border-radius: 8px;
   box-shadow: 0 4px 14px rgba(20, 30, 60, .18);
 }
