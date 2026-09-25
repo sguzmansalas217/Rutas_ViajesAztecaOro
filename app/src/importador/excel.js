@@ -306,6 +306,11 @@ async function contratarSiEsDeTelefonos(cliente, vehiculo, limite, memo) {
  * @returns {'aplicado'|'igual'|'duplicado'}
  */
 async function aplicarTelefono(cliente, conductorId, telefono) {
+  // Se llega aquí sólo cuando este conductor SÍ está en la hoja TELEFONOS de
+  // esta carga —tenga éxito el teléfono o no—. en_padron se prende siempre,
+  // independiente de 'aplicado'/'igual'/'duplicado' de abajo.
+  await cliente.query('UPDATE conductor SET en_padron = true WHERE id = $1', [conductorId]);
+
   const actual = await cliente.query(
     'SELECT telefono_e164 FROM conductor WHERE id = $1',
     [conductorId],
@@ -529,7 +534,17 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
     // acordado así en la junta del 25 sep 2026, es más agresivo que sólo
     // sincronizar los que coinciden. Sin hoja TELEFONOS (tels es null) no se
     // toca nada: no hay con qué repoblar.
-    if (tels) await cliente.query('UPDATE conductor SET telefono_e164 = NULL WHERE telefono_e164 IS NOT NULL');
+    //
+    // en_padron sigue la misma lógica: la pantalla de Conductores tiene que
+    // ser un espejo exacto de esta hoja, no un acumulado de pruebas viejas.
+    // Se apaga para todos y aplicarTelefono() lo vuelve a prender sólo para
+    // los que de verdad aparecen aquí. DEFAULT true en la columna es lo que
+    // protege a un conductor dado de alta a mano desde el portal —éste nunca
+    // pasa por aquí, así que nunca se apaga solo—.
+    if (tels) {
+      await cliente.query('UPDATE conductor SET telefono_e164 = NULL WHERE telefono_e164 IS NOT NULL');
+      await cliente.query('UPDATE conductor SET en_padron = false WHERE en_padron');
+    }
 
     for (const hoja of libro.worksheets) {
       const cfg = HOJAS[normalizar(hoja.name)] ?? HOJAS[hoja.name];

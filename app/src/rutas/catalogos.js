@@ -18,12 +18,17 @@ export default async function catalogos(app) {
   // ── Conductores ───────────────────────────────────────────────────────────
   app.get('/conductores', async (req) => {
     const { buscar = '', sinTelefono } = req.query;
+    // en_padron: la pantalla es un espejo de la hoja TELEFONOS del último
+    // Excel, no un acumulado de todo lo que alguna vez se subió. Un
+    // conductor dado de alta a mano desde el portal nace con en_padron=true
+    // y nunca pasa por el importador, así que tampoco desaparece solo.
     return filas(
       `SELECT c.id, c.nombre, c.telefono_e164, c.activo,
               (SELECT count(*)::int FROM conductor_alias a WHERE a.conductor_id = c.id) AS alias,
               (SELECT string_agg(a.alias, ' | ') FROM conductor_alias a WHERE a.conductor_id = c.id) AS como_aparece
          FROM conductor c
-        WHERE ($1 = '' OR c.nombre ILIKE '%' || $1 || '%'
+        WHERE c.en_padron
+          AND ($1 = '' OR c.nombre ILIKE '%' || $1 || '%'
                OR EXISTS (SELECT 1 FROM conductor_alias a WHERE a.conductor_id = c.id AND a.alias ILIKE '%' || $1 || '%'))
           AND ($2::bool IS NOT TRUE OR c.telefono_e164 IS NULL)
         ORDER BY c.telefono_e164 IS NULL DESC, c.nombre

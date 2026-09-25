@@ -1,0 +1,13 @@
+-- ============================================================================
+--  020 · Conductores: la pantalla debe coincidir con TELEFONOS, no acumular
+--
+--  Antes un conductor que salía de TELEFONOS en una carga posterior se quedaba
+--  vivo para siempre en /conductores —sólo se le borraba el teléfono (019/borrado
+--  global de la carga 2026-09-25)—, y la lista de conductores se llenaba de
+--  gente de pruebas viejas que ya no maneja. El cliente pidió que esta pantalla
+--  sea un espejo exacto de la hoja TELEFONOS del último Excel.
+--
+--  DEFAULT true: un conductor dado de alta a mano desde el portal (sin pasar
+--  por el importador) no debe desaparecer sin que nadie lo toque.
+-- ============================================================================
+ALTER TABLE conductor ADD COLUMN en_padron boolean NOT NULL DEFAULT true;
