@@ -809,23 +809,32 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
     //  de ruta a dos horas distintas en el mismo turno (son viajes distintos).
     //  Pero eso significa que corregir la hora de UNA fila crea una ruta_id
     //  nueva, y por lo tanto una asignación nueva para hoy —la de arriba,
-    //  protegida porque está a medias, se queda tal cual, y ésta se suma en
+    //  protegida porque está en curso, se queda tal cual, y ésta se suma en
     //  vez de reemplazarla—. El conductor recibe el despertar dos veces.
     //
-    //  Aquí se deshace ese duplicado: si la fila que ESTA carga acaba de
-    //  crear/tocar comparte conductor, fecha, nombre de ruta y turno con una
-    //  fila protegida (a medias) que ya existía con OTRA hora, la nueva se
-    //  retira antes de que nadie le programe marcajes. La protegida sigue su
-    //  curso con la hora vieja —es tarde para cambiársela sin confundir la
-    //  conversación que ya está abierta con el conductor—.
+    //  "En curso" (quinta versión de esta regla, 2026-09-25 —la definitiva—):
+    //  ALGÚN marcaje ya se mandó (sin importar cuál) Y la ruta no está
+    //  completa todavía (queda al menos uno sin resolver). Antes se exigía
+    //  que el marcaje ENVIADO estuviera además sin contestar, y eso dejaba un
+    //  hueco real: si el marcaje 1 ya contestó pero el 2 todavía no se manda
+    //  —está 'pendiente', esperando su hora—, nada calificaba como "a
+    //  medias" y la ruta se dejaba reemplazar iniciada a la mitad. Probado y
+    //  confirmado con datos reales el mismo día.
     //
-    //  No hay forma de distinguir esto de "el mismo conductor de verdad hace
-    //  dos viajes con el mismo nombre de ruta el mismo día" —los dos casos
-    //  se ven igual en la base—. Se resuelve a favor del caso probado y
-    //  pedido explícitamente (corregir una hora a medio viaje). Si algún día
-    //  aparece un cliente con rutas dobles genuinas del mismo nombre y
-    //  conductor, esto habría que revisarlo.
+    //  Si la ruta protegida YA terminó (todos sus marcajes 'respondido' o
+    //  'cancelado'), sí se deja pisar por la corrección —pero sólo si la
+    //  hora nueva sigue siendo futura—: corregir hacia una hora que ya pasó
+    //  no tiene caso, así que en ese caso se descarta la fila nueva y la
+    //  vieja (terminada) se queda como estaba —el retiro de abajo la oculta
+    //  del Tablero de todos modos, por estar completa—.
+    //
+    //  No hay forma de distinguir "corregir una hora a medio viaje" de "el
+    //  mismo conductor hace dos viajes genuinos con el mismo nombre de ruta
+    //  el mismo día" —se ven igual en la base—. Se resuelve a favor del caso
+    //  probado y pedido explícitamente.
     if (vigentes.size) {
+      // Protegida "en curso": se queda, la fila nueva se descarta sin
+      // importar la hora.
       await cliente.query(
         `UPDATE asignacion dup
             SET estado = 'reemplazada', carga_id = $1
@@ -841,10 +850,33 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
             AND protegida.fecha = dup.fecha
             AND r_prot.nombre = r_dup.nombre AND r_prot.turno = r_dup.turno
             AND r_prot.id <> r_dup.id
-            AND EXISTS (
-              SELECT 1 FROM marcaje m
-               WHERE m.asignacion_id = protegida.id AND m.enviado_en IS NOT NULL AND m.respondido_en IS NULL
-            )`,
+            AND EXISTS (SELECT 1 FROM marcaje m WHERE m.asignacion_id = protegida.id AND m.enviado_en IS NOT NULL)
+            AND EXISTS (SELECT 1 FROM marcaje m WHERE m.asignacion_id = protegida.id AND m.estado NOT IN ('respondido', 'cancelado'))`,
+        [cargaId, [...vigentes]],
+      );
+
+      // Protegida ya TERMINADA: la corrección sólo se acepta si la hora
+      // nueva todavía no pasó. Si ya pasó, se descarta la fila nueva —la
+      // vieja, terminada, se deja igual y el retiro de abajo ya la oculta
+      // del Tablero por estar completa—.
+      await cliente.query(
+        `UPDATE asignacion dup
+            SET estado = 'reemplazada', carga_id = $1
+           FROM asignacion protegida, ruta r_dup, ruta r_prot
+          WHERE dup.ruta_id = r_dup.id
+            AND protegida.ruta_id = r_prot.id
+            AND dup.id = ANY($2::bigint[])
+            AND dup.fecha >= CURRENT_DATE
+            AND dup.estado <> 'reemplazada'
+            AND protegida.id <> dup.id
+            AND protegida.estado <> 'reemplazada'
+            AND protegida.conductor_id = dup.conductor_id
+            AND protegida.fecha = dup.fecha
+            AND r_prot.nombre = r_dup.nombre AND r_prot.turno = r_dup.turno
+            AND r_prot.id <> r_dup.id
+            AND EXISTS (SELECT 1 FROM marcaje m WHERE m.asignacion_id = protegida.id AND m.enviado_en IS NOT NULL)
+            AND NOT EXISTS (SELECT 1 FROM marcaje m WHERE m.asignacion_id = protegida.id AND m.estado NOT IN ('respondido', 'cancelado'))
+            AND (dup.fecha + r_dup.hora_monitoreo)::timestamp AT TIME ZONE 'America/Mexico_City' <= now()`,
         [cargaId, [...vigentes]],
       );
     }
@@ -870,14 +902,15 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
     //  el archivo. Reescribir el pasado por un cambio de hoy sería borrar
     //  evidencia de un servicio que sí se dio.
     if (minFecha && maxFecha && reporte.leidas > 0) {
-      // Se retira aunque ya haya contestado (terminado) o aunque nunca se
-      // haya mandado nada —lo único protegido es lo que está A MEDIAS: ya se
-      // le preguntó y todavía no contesta—. Tocarlo ahí sería confundir una
-      // conversación abierta: el conductor tiene una pregunta pendiente sobre
-      // la asignación vieja justo cuando le llegaría corregida. Terminado ya
-      // no hay conversación que confundir, así que sí se puede retirar.
-      // Decidido así explícitamente el 2026-09-25 —tercera versión de esta
-      // regla el mismo día, ésta es la vigente—.
+      // Se retira aunque ya haya TERMINADO (todos sus marcajes 'respondido' o
+      // 'cancelado') o aunque nunca se haya mandado nada —lo único protegido
+      // es lo que está EN CURSO: algún marcaje ya se mandó y todavía queda
+      // uno sin resolver, sin importar si el que se mandó ya contestó o no—.
+      // Tocarlo ahí sería confundir una conversación abierta a medias.
+      // Quinta versión de esta regla el mismo día 2026-09-25 —la vigente—:
+      // antes se protegía sólo lo "enviado y sin contestar", y eso dejaba un
+      // hueco real (marcaje 1 ya contestado, marcaje 2 apenas pendiente de
+      // enviarse contaba como "libre" y se dejaba reemplazar a media ruta).
       //
       // Nunca hacia el pasado (GREATEST arriba): eso sigue intocable, es lo
       // que ya se facturó. Y el marcaje en sí —respuesta, hora, ubicación—
@@ -890,9 +923,9 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
           WHERE a.fecha BETWEEN GREATEST($2::date, CURRENT_DATE) AND $3
             AND a.estado <> 'reemplazada'
             AND NOT (a.id = ANY($4::bigint[]))
-            AND NOT EXISTS (
-              SELECT 1 FROM marcaje m
-               WHERE m.asignacion_id = a.id AND m.enviado_en IS NOT NULL AND m.respondido_en IS NULL
+            AND (
+              NOT EXISTS (SELECT 1 FROM marcaje m WHERE m.asignacion_id = a.id AND m.enviado_en IS NOT NULL)
+              OR NOT EXISTS (SELECT 1 FROM marcaje m WHERE m.asignacion_id = a.id AND m.estado NOT IN ('respondido', 'cancelado'))
             )`,
         [cargaId, minFecha, maxFecha, [...vigentes]],
       );
