@@ -803,6 +803,52 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
       reporte.pendientes -= rescatadas;
     }
 
+    // ── Corregir hora de una ruta ya en curso ────────────────────────────────
+    //  ruta tiene UNIQUE (nombre, turno, hora_monitoreo): la hora es parte de
+    //  su identidad, a propósito, porque el cliente sí repite un mismo nombre
+    //  de ruta a dos horas distintas en el mismo turno (son viajes distintos).
+    //  Pero eso significa que corregir la hora de UNA fila crea una ruta_id
+    //  nueva, y por lo tanto una asignación nueva para hoy —la de arriba,
+    //  protegida porque está a medias, se queda tal cual, y ésta se suma en
+    //  vez de reemplazarla—. El conductor recibe el despertar dos veces.
+    //
+    //  Aquí se deshace ese duplicado: si la fila que ESTA carga acaba de
+    //  crear/tocar comparte conductor, fecha, nombre de ruta y turno con una
+    //  fila protegida (a medias) que ya existía con OTRA hora, la nueva se
+    //  retira antes de que nadie le programe marcajes. La protegida sigue su
+    //  curso con la hora vieja —es tarde para cambiársela sin confundir la
+    //  conversación que ya está abierta con el conductor—.
+    //
+    //  No hay forma de distinguir esto de "el mismo conductor de verdad hace
+    //  dos viajes con el mismo nombre de ruta el mismo día" —los dos casos
+    //  se ven igual en la base—. Se resuelve a favor del caso probado y
+    //  pedido explícitamente (corregir una hora a medio viaje). Si algún día
+    //  aparece un cliente con rutas dobles genuinas del mismo nombre y
+    //  conductor, esto habría que revisarlo.
+    if (vigentes.size) {
+      await cliente.query(
+        `UPDATE asignacion dup
+            SET estado = 'reemplazada', carga_id = $1
+           FROM asignacion protegida
+           JOIN ruta r_dup  ON r_dup.id  = dup.ruta_id
+           JOIN ruta r_prot ON r_prot.id = protegida.ruta_id
+          WHERE dup.id = ANY($2::bigint[])
+            AND dup.fecha >= CURRENT_DATE
+            AND dup.estado <> 'reemplazada'
+            AND protegida.id <> dup.id
+            AND protegida.estado <> 'reemplazada'
+            AND protegida.conductor_id = dup.conductor_id
+            AND protegida.fecha = dup.fecha
+            AND r_prot.nombre = r_dup.nombre AND r_prot.turno = r_dup.turno
+            AND r_prot.id <> r_dup.id
+            AND EXISTS (
+              SELECT 1 FROM marcaje m
+               WHERE m.asignacion_id = protegida.id AND m.enviado_en IS NOT NULL AND m.respondido_en IS NULL
+            )`,
+        [cargaId, [...vigentes]],
+      );
+    }
+
     // ── Lo que el cliente quitó o cambió ─────────────────────────────────────
     //  El archivo se carga todos los días. Las celdas que no cambiaron ya se
     //  actualizaron en su sitio (misma fila, mismos marcajes: la llave UNIQUE
