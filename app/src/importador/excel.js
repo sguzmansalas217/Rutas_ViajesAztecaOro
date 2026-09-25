@@ -829,10 +829,10 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
       await cliente.query(
         `UPDATE asignacion dup
             SET estado = 'reemplazada', carga_id = $1
-           FROM asignacion protegida
-           JOIN ruta r_dup  ON r_dup.id  = dup.ruta_id
-           JOIN ruta r_prot ON r_prot.id = protegida.ruta_id
-          WHERE dup.id = ANY($2::bigint[])
+           FROM asignacion protegida, ruta r_dup, ruta r_prot
+          WHERE dup.ruta_id = r_dup.id
+            AND protegida.ruta_id = r_prot.id
+            AND dup.id = ANY($2::bigint[])
             AND dup.fecha >= CURRENT_DATE
             AND dup.estado <> 'reemplazada'
             AND protegida.id <> dup.id
