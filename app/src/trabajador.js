@@ -17,10 +17,11 @@ import IORedis from 'ioredis';
 
 import { config } from './config.js';
 import { log } from './log.js';
-import { filas, consultar, unaFila, parametro, listaDeTelefonos, pool } from './db.js';
-import { enviarAConductor, enviarAviso } from './infra/whatsapp.js';
+import { filas, consultar, unaFila, parametro, pool } from './db.js';
+import { enviarAConductor } from './infra/whatsapp.js';
 import { decidirCanal } from './dominio/ventana.js';
 import { partirCelda } from './dominio/normalizar.js';
+import { avisarEncargados } from './dominio/avisos.js';
 
 const conexion = new IORedis(config.redis.url, { maxRetriesPerRequest: null });
 const colaEnvios = new Queue('envios', { connection: conexion });
@@ -82,7 +83,6 @@ async function tic() {
 // ── Vencimientos y alertas ──────────────────────────────────────────────────
 async function vencerYAlertar() {
   const espera = Number(await parametro('alerta.espera_min', 5));
-  const telefonosAviso = listaDeTelefonos(await parametro('aviso.encargado_telefono', []));
 
   const vencidos = await filas(
     `UPDATE marcaje m
@@ -101,13 +101,6 @@ async function vencerYAlertar() {
   if (!vencidos.length) return;
   log.warn({ n: vencidos.length }, '🔴 marcajes sin respuesta');
 
-  if (!telefonosAviso.length) {
-    // Sin número configurado el rojo sólo existe en el Tablero. Se dice en el
-    // log: es la diferencia entre "no hubo rojos" y "hubo y nadie se enteró".
-    log.warn('sin aviso.encargado_telefono: los rojos no se avisan a nadie');
-    return;
-  }
-
   // Dos formas de la misma lista. La de renglones es la que se lee bien en el
   // celular; la de una línea es para la plantilla, porque Meta rechaza el envío
   // entero si un parámetro trae saltos de línea.
@@ -116,38 +109,8 @@ async function vencerYAlertar() {
     .map((v) => `${v.conductor ?? '?'} — ${v.ruta} (${NOMBRE_MARCAJE[v.numero] ?? `marcaje ${v.numero}`})`);
   const extra = vencidos.length > 15 ? ` …y ${vencidos.length - 15} más` : '';
   const texto = `🔴 Sin respuesta (${vencidos.length}):\n${items.map((i) => `• ${i}`).join('\n')}${extra}`;
-  const plantilla = String(await parametro('wa.plantilla_alerta', 'alerta_sin_respuesta'));
 
-  // Hasta 5 números, cada uno se manda por separado: el fallo de uno (número
-  // mal capturado, ventana cerrada y sin plantilla) no debe tumbar el aviso a
-  // los demás.
-  //
-  // Sólo el PRIMERO —el principal— tiene respaldo de plantilla: es el único
-  // al que se le garantiza que le llegue, pagando si hace falta. A los demás
-  // (secundarios) sólo les llega si su propia ventana de 24 h está abierta
-  // —o sea, si le escribieron algo al número del sistema en el día—; si no,
-  // no se les manda nada por plantilla y el aviso a ese número simplemente no
-  // sale. Es la forma de que 5 destinatarios no multipliquen por 5 el costo
-  // de cada rojo.
-  for (const [i, telefonoAviso] of telefonosAviso.entries()) {
-    const respaldo = i === 0 ? { plantilla, variables: [String(vencidos.length), items.join(' · ') + extra] } : null;
-    const r = await enviarAviso(telefonoAviso, texto, respaldo);
-
-    if (r.ok) {
-      // Cuando el aviso sale por plantilla se está pagando por avisar. Con un
-      // encargado que no escribe nunca eso son 30 pesos al mes por nada: si
-      // contesta el aviso, el resto del día sale gratis. Queda en el log para
-      // que se note antes de que aparezca en el corte.
-      if (r.canal === 'plantilla') {
-        log.warn({ telefono: telefonoAviso, costoUsd: r.costoUsd }, 'aviso por plantilla: el encargado no tiene ventana abierta');
-      }
-      continue;
-    }
-    log.error(
-      { codigo: r.codigo, canal: r.canal, telefono: telefonoAviso },
-      '🔴 el aviso NO llegó al encargado',
-    );
-  }
+  await avisarEncargados(texto, [String(vencidos.length), items.join(' · ') + extra]);
 }
 
 // ── Procesador de la cola de envíos ─────────────────────────────────────────

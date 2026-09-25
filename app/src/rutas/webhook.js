@@ -18,6 +18,7 @@ import { log } from '../log.js';
 import { abrirVentana, decidirCanal } from '../dominio/ventana.js';
 import { evaluarUbicacion, semaforoDe } from '../dominio/geocerca.js';
 import { enviarAConductor, pedirUbicacion } from '../infra/whatsapp.js';
+import { avisarEncargados } from '../dominio/avisos.js';
 
 /**
  * Frases con las que el conductor avisa POR ESCRITO que ya llegó al filtro.
@@ -444,10 +445,12 @@ async function procesarMensaje(mensaje, valor) {
     semaforo = 'amarillo';
   }
 
-  // «Hay una falla» sí es una respuesta, pero no es un sí. En verde se perdería
-  // entre los demás y nadie se enteraría de la unidad averiada; en amarillo se
-  // ve en el tablero y la respuesta queda escrita en el detalle.
-  if (botonId?.startsWith('m2-no-')) semaforo = 'amarillo';
+  // «Hay una falla» sí es una respuesta, pero no es un sí. En rojo: es lo único
+  // en el tablero que hace que alguien lo mire ya, no cuando le toque revisar
+  // los amarillos. La unidad averiada no puede esperar a que otro marcaje se
+  // venza para que alguien se entere.
+  const esFalla = botonId?.startsWith('m2-no-');
+  if (esFalla) semaforo = 'rojo';
 
   // Lo que ya se venció no vuelve a verde, aunque la tolerancia lo permita.
   //
@@ -483,6 +486,21 @@ async function procesarMensaje(mensaje, valor) {
     { conductor: conductor.nombre, marcaje: marcaje.numero, semaforo, ubicacion: Boolean(latitud), adelantado },
     'marcaje registrado',
   );
+
+  // Falla reportada: se avisa ya, no hasta que otro marcaje se venza. Sin
+  // plantilla aprobada en Meta para este caso —mandar la de "sin respuesta"
+  // avisaría con las palabras equivocadas—, así que sólo sale si la ventana
+  // del encargado ya está abierta.
+  if (esFalla) {
+    const r = await unaFila(
+      `SELECT ru.nombre FROM marcaje m
+         JOIN asignacion a ON a.id = m.asignacion_id
+         JOIN ruta ru ON ru.id = a.ruta_id
+        WHERE m.id = $1`,
+      [marcaje.id],
+    );
+    await avisarEncargados(`🔧 Falla reportada — ${conductor.nombre ?? '?'} · ${r?.nombre ?? '?'}`);
+  }
 
   // La salida cerrada con el botón todavía no dice desde dónde. Pedirlo aquí
   // hace las veces de acuse —el mensaje empieza con «Registrado»—, así que no
