@@ -809,29 +809,29 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
     //  el archivo. Reescribir el pasado por un cambio de hoy sería borrar
     //  evidencia de un servicio que sí se dio.
     if (minFecha && maxFecha && reporte.leidas > 0) {
+      // Se retira aunque ya haya contestado: si no viene en el archivo nuevo,
+      // se va del Tablero —así lo pidió el cliente explícitamente el
+      // 2026-09-25, aunque contradiga el criterio anterior—. Nunca hacia el
+      // pasado (GREATEST arriba): eso sigue intocable, es lo que ya se
+      // facturó. Y el marcaje en sí —respuesta, hora, ubicación— no se borra
+      // ni se cancela más abajo: sólo la asignación se oculta de la vista
+      // del día, la evidencia queda en la base por si hay que consultarla.
       const { rowCount: retiradas } = await cliente.query(
         `UPDATE asignacion a
             SET estado = 'reemplazada', carga_id = $1
           WHERE a.fecha BETWEEN GREATEST($2::date, CURRENT_DATE) AND $3
             AND a.estado <> 'reemplazada'
-            AND NOT (a.id = ANY($4::bigint[]))
-            -- Se retira si nada de esta ruta TERMINÓ todavía —"terminó" es que
-            -- el conductor contestó, no sólo que se le mandó el mensaje—. Un
-            -- marcaje enviado y sin contestar sí se puede reemplazar: el Excel
-            -- corrigió algo (unidad, conductor, hora) y el conductor recibe la
-            -- pregunta otra vez con el dato bueno. Lo que ya contestó es la
-            -- evidencia de lo que pasó y ya no se toca ni se duplica.
-            AND NOT EXISTS (
-              SELECT 1 FROM marcaje m WHERE m.asignacion_id = a.id AND m.respondido_en IS NOT NULL
-            )`,
+            AND NOT (a.id = ANY($4::bigint[]))`,
         [cargaId, minFecha, maxFecha, [...vigentes]],
       );
       reporte.reemplazadas = retiradas;
 
       // Todo lo que no se había contestado se cancela con la asignación: ya
       // no hay a qué responder, la reemplazó una fila nueva con el dato
-      // corregido. Lo ya contestado nunca llega aquí —la asignación que lo
-      // trae no se marcó 'reemplazada' arriba—.
+      // corregido (o simplemente ya no viene en el archivo). Lo ya contestado
+      // NO se cancela aunque su asignación sí se haya marcado 'reemplazada'
+      // arriba: la respuesta, hora y ubicación quedan en la base tal cual,
+      // sólo se oculta la fila de la vista del día.
       const { rowCount: cancelados } = await cliente.query(
         `UPDATE marcaje m
             SET estado = 'cancelado'
