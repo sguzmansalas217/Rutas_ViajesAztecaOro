@@ -824,19 +824,30 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
     //  el archivo. Reescribir el pasado por un cambio de hoy sería borrar
     //  evidencia de un servicio que sí se dio.
     if (minFecha && maxFecha && reporte.leidas > 0) {
-      // Se retira aunque ya haya contestado: si no viene en el archivo nuevo,
-      // se va del Tablero —así lo pidió el cliente explícitamente el
-      // 2026-09-25, aunque contradiga el criterio anterior—. Nunca hacia el
-      // pasado (GREATEST arriba): eso sigue intocable, es lo que ya se
-      // facturó. Y el marcaje en sí —respuesta, hora, ubicación— no se borra
-      // ni se cancela más abajo: sólo la asignación se oculta de la vista
-      // del día, la evidencia queda en la base por si hay que consultarla.
+      // Se retira aunque ya haya contestado (terminado) o aunque nunca se
+      // haya mandado nada —lo único protegido es lo que está A MEDIAS: ya se
+      // le preguntó y todavía no contesta—. Tocarlo ahí sería confundir una
+      // conversación abierta: el conductor tiene una pregunta pendiente sobre
+      // la asignación vieja justo cuando le llegaría corregida. Terminado ya
+      // no hay conversación que confundir, así que sí se puede retirar.
+      // Decidido así explícitamente el 2026-09-25 —tercera versión de esta
+      // regla el mismo día, ésta es la vigente—.
+      //
+      // Nunca hacia el pasado (GREATEST arriba): eso sigue intocable, es lo
+      // que ya se facturó. Y el marcaje en sí —respuesta, hora, ubicación—
+      // no se borra ni se cancela más abajo: sólo la asignación se oculta de
+      // la vista del día, la evidencia queda en la base por si hay que
+      // consultarla.
       const { rowCount: retiradas } = await cliente.query(
         `UPDATE asignacion a
             SET estado = 'reemplazada', carga_id = $1
           WHERE a.fecha BETWEEN GREATEST($2::date, CURRENT_DATE) AND $3
             AND a.estado <> 'reemplazada'
-            AND NOT (a.id = ANY($4::bigint[]))`,
+            AND NOT (a.id = ANY($4::bigint[]))
+            AND NOT EXISTS (
+              SELECT 1 FROM marcaje m
+               WHERE m.asignacion_id = a.id AND m.enviado_en IS NOT NULL AND m.respondido_en IS NULL
+            )`,
         [cargaId, minFecha, maxFecha, [...vigentes]],
       );
       reporte.reemplazadas = retiradas;
