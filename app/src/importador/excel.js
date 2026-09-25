@@ -469,6 +469,15 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
     let minFecha = null;
     let maxFecha = null;
 
+    // El teléfono de la hoja TELEFONOS de ESTE archivo manda, sin excepción:
+    // se borran TODOS los que hay en base y se repueblan sólo con lo que trae
+    // esta hoja. Antes un número de prueba de una carga vieja se quedaba vivo
+    // para siempre porque nunca volvía a aparecer en TELEFONOS para pisarlo —
+    // acordado así en la junta del 25 sep 2026, es más agresivo que sólo
+    // sincronizar los que coinciden. Sin hoja TELEFONOS (tels es null) no se
+    // toca nada: no hay con qué repoblar.
+    if (tels) await cliente.query('UPDATE conductor SET telefono_e164 = NULL WHERE telefono_e164 IS NOT NULL');
+
     for (const hoja of libro.worksheets) {
       const cfg = HOJAS[normalizar(hoja.name)] ?? HOJAS[hoja.name];
       if (!cfg) {

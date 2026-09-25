@@ -94,7 +94,8 @@ async function vencerYAlertar() {
         AND m.alertado_en IS NULL
         AND m.enviado_en < now() - ($1 || ' minutes')::interval
       RETURNING m.numero, r.nombre AS ruta, r.encargado,
-                (SELECT c.nombre FROM conductor c WHERE c.id = a.conductor_id) AS conductor`,
+                (SELECT c.nombre FROM conductor c WHERE c.id = a.conductor_id) AS conductor,
+                (SELECT c.telefono_e164 FROM conductor c WHERE c.id = a.conductor_id) AS telefono`,
     [String(espera)],
   );
 
@@ -104,9 +105,13 @@ async function vencerYAlertar() {
   // Dos formas de la misma lista. La de renglones es la que se lee bien en el
   // celular; la de una línea es para la plantilla, porque Meta rechaza el envío
   // entero si un parámetro trae saltos de línea.
+  //
+  // El teléfono en formato +52... WhatsApp lo detecta solo y lo pinta como
+  // enlace tocable —es el "botón de llamada" sin necesitar una plantilla
+  // nueva con componente de llamada aprobado en Meta—.
   const items = vencidos
     .slice(0, 15)
-    .map((v) => `${v.conductor ?? '?'} — ${v.ruta} (${NOMBRE_MARCAJE[v.numero] ?? `marcaje ${v.numero}`})`);
+    .map((v) => `${v.conductor ?? '?'} — ${v.ruta} (${NOMBRE_MARCAJE[v.numero] ?? `marcaje ${v.numero}`})${v.telefono ? ` · 📞 ${v.telefono}` : ''}`);
   const extra = vencidos.length > 15 ? ` …y ${vencidos.length - 15} más` : '';
   const texto = `🔴 Sin respuesta (${vencidos.length}):\n${items.map((i) => `• ${i}`).join('\n')}${extra}`;
 

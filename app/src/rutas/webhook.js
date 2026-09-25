@@ -499,7 +499,8 @@ async function procesarMensaje(mensaje, valor) {
         WHERE m.id = $1`,
       [marcaje.id],
     );
-    await avisarEncargados(`🔧 Falla reportada — ${conductor.nombre ?? '?'} · ${r?.nombre ?? '?'}`);
+    const tel = conductor.telefono_e164 ? ` · 📞 ${conductor.telefono_e164}` : '';
+    await avisarEncargados(`🔧 Falla reportada — ${conductor.nombre ?? '?'} · ${r?.nombre ?? '?'}${tel}`);
   }
 
   // La salida cerrada con el botón todavía no dice desde dónde. Pedirlo aquí
