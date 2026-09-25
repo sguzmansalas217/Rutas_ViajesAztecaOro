@@ -713,11 +713,19 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
     //  evidencia de un servicio que sí se dio.
     if (minFecha && maxFecha && reporte.leidas > 0) {
       const { rowCount: retiradas } = await cliente.query(
-        `UPDATE asignacion
+        `UPDATE asignacion a
             SET estado = 'reemplazada', carga_id = $1
-          WHERE fecha BETWEEN GREATEST($2::date, CURRENT_DATE) AND $3
-            AND estado <> 'reemplazada'
-            AND NOT (id = ANY($4::bigint[]))`,
+          WHERE a.fecha BETWEEN GREATEST($2::date, CURRENT_DATE) AND $3
+            AND a.estado <> 'reemplazada'
+            AND NOT (a.id = ANY($4::bigint[]))
+            -- La ruta ya arrancó (algún marcaje ya se mandó): no se retira aunque
+            -- hoy no salga en el archivo. El Excel del día no siempre repite lo
+            -- que ya salió en la mañana, y retirarla la sacaba del Tablero a
+            -- media ruta —el conductor la seguía corriendo y el sistema decía
+            -- que ya no existía—.
+            AND NOT EXISTS (
+              SELECT 1 FROM marcaje m WHERE m.asignacion_id = a.id AND m.enviado_en IS NOT NULL
+            )`,
         [cargaId, minFecha, maxFecha, [...vigentes]],
       );
       reporte.reemplazadas = retiradas;
