@@ -1,0 +1,15 @@
+-- ============================================================================
+--  021 · Unidades: la pantalla debe coincidir con el Excel actual, igual que
+--        Conductores (020_conductor_en_padron.sql)
+--
+--  Una unidad que ya no sale en el Excel de esta semana se quedaba viva para
+--  siempre en /catalogos/contrato, mezclada con las de la carga actual. El
+--  cliente pidió que Unidades sea un espejo del último archivo, igual que ya
+--  se hizo con Conductores.
+--
+--  No afecta el conteo del contrato (estadoContrato() en contrato.js sigue
+--  contando por `contratado`, sin filtrar por en_padron) ni la facturación
+--  (vehiculo_activo_mes lee de asignacion, no de esta columna): sólo cambia
+--  qué se LISTA en la pantalla.
+-- ============================================================================
+ALTER TABLE vehiculo ADD COLUMN en_padron boolean NOT NULL DEFAULT true;

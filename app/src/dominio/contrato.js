@@ -38,6 +38,11 @@ export async function estadoContrato() {
  * Listado para elegir las unidades. Ordena por carga de trabajo real
  * (asignaciones en el archivo), que es el criterio con el que alguien
  * escogería a mano: primero las que más trabajan.
+ *
+ * en_padron: espejo del último Excel, igual que Conductores (ver
+ * 021_vehiculo_en_padron.sql). No afecta el tope del contrato —una unidad
+ * contratada que por algo no salga esta semana sigue contando para
+ * estadoContrato(), sólo deja de listarse aquí—.
  */
 export async function listarVehiculos({ soloContratados = false } = {}) {
   return filas(
@@ -54,6 +59,7 @@ export async function listarVehiculos({ soloContratados = false } = {}) {
               ON a.vehiculo_id = v.id
              AND a.estado <> 'cancelada'
       WHERE v.activo
+        AND v.en_padron
         AND ($1::bool IS NOT TRUE OR v.contratado)
       GROUP BY v.id, v.clave, v.contratado, v.contratado_en
       ORDER BY v.contratado DESC, count(a.id) DESC, v.clave`,

@@ -232,6 +232,11 @@ async function resolverVehiculo(cliente, unidad, fusionarV, memo) {
     [alias],
   );
   if (existente.rowCount) {
+    // en_padron: la pantalla de Unidades tiene que ser un espejo del Excel
+    // actual, igual que Conductores con TELEFONOS. Se apaga para todas al
+    // empezar la carga (más abajo) y aquí se vuelve a prender para la que sí
+    // aparece en esta semana.
+    await cliente.query('UPDATE vehiculo SET en_padron = true WHERE id = $1', [existente.rows[0].vehiculo_id]);
     const r = { id: existente.rows[0].vehiculo_id, contratado: existente.rows[0].contratado };
     memo.vehiculos.set(alias, r);
     return r;
@@ -240,7 +245,7 @@ async function resolverVehiculo(cliente, unidad, fusionarV, memo) {
   const canonica = claveCanonica(unidad, fusionarV);
   const { rows } = await cliente.query(
     `INSERT INTO vehiculo (clave) VALUES ($1)
-     ON CONFLICT (clave) DO UPDATE SET clave = EXCLUDED.clave
+     ON CONFLICT (clave) DO UPDATE SET clave = EXCLUDED.clave, en_padron = true
      RETURNING id`,
     [canonica],
   );
@@ -545,6 +550,15 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
       await cliente.query('UPDATE conductor SET telefono_e164 = NULL WHERE telefono_e164 IS NOT NULL');
       await cliente.query('UPDATE conductor SET en_padron = false WHERE en_padron');
     }
+
+    // vehiculo.en_padron: la pantalla de Unidades tiene que ser un espejo del
+    // Excel actual igual que Conductores —a diferencia del teléfono, las
+    // unidades salen de las hojas de programación (MAÑANA, TARDE...), no de
+    // TELEFONOS, así que esto corre siempre, con o sin esa hoja—.
+    // resolverVehiculo() lo vuelve a prender para cada unidad que sí aparece
+    // esta semana. No toca 'contratado' ni el conteo del tope del contrato
+    // —eso sigue siendo del vehículo, no de si salió en el Excel de hoy—.
+    await cliente.query('UPDATE vehiculo SET en_padron = false WHERE en_padron');
 
     for (const hoja of libro.worksheets) {
       const cfg = HOJAS[normalizar(hoja.name)] ?? HOJAS[hoja.name];
