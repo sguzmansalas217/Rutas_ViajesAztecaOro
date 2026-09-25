@@ -452,6 +452,12 @@ async function procesarMensaje(mensaje, valor) {
   const esFalla = botonId?.startsWith('m2-no-');
   if (esFalla) semaforo = 'rojo';
 
+  // El filtro contestado desde fuera de la geocerca es el otro motivo de
+  // rojo con respuesta (ver geocerca.js semaforoDe): tampoco vence nunca
+  // —respondido_en ya quedó puesto—, así que sin este aviso aparte nadie se
+  // entera hasta que alguien revise el tablero a mano.
+  const fueraDeFiltro = marcaje.numero === 3 && evaluacion && !evaluacion.sinConfigurar && evaluacion.dentro === false;
+
   // Lo que ya se venció no vuelve a verde, aunque la tolerancia lo permita.
   //
   // Son dos relojes distintos y hay que respetar los dos: la tolerancia dice si
@@ -487,11 +493,13 @@ async function procesarMensaje(mensaje, valor) {
     'marcaje registrado',
   );
 
-  // Falla reportada: se avisa ya, no hasta que otro marcaje se venza. Sin
-  // plantilla aprobada en Meta para este caso —mandar la de "sin respuesta"
-  // avisaría con las palabras equivocadas—, así que sólo sale si la ventana
-  // del encargado ya está abierta.
-  if (esFalla) {
+  // Falla reportada o filtro fuera de la geocerca: los dos son rojo CON
+  // respuesta, así que nunca "vencen" y vencerYAlertar() nunca los ve. Se
+  // avisa aquí mismo, ya, sin esperar. Sin plantilla aprobada en Meta para
+  // estos dos casos —mandar la de "sin respuesta" avisaría con las palabras
+  // equivocadas—, así que sólo sale si la ventana del encargado ya está
+  // abierta.
+  if (esFalla || fueraDeFiltro) {
     const r = await unaFila(
       `SELECT ru.nombre FROM marcaje m
          JOIN asignacion a ON a.id = m.asignacion_id
@@ -500,7 +508,10 @@ async function procesarMensaje(mensaje, valor) {
       [marcaje.id],
     );
     const tel = conductor.telefono_e164 ? ` · 📞 ${conductor.telefono_e164}` : '';
-    await avisarEncargados(`🔧 Falla reportada — ${conductor.nombre ?? '?'} · ${r?.nombre ?? '?'}${tel}`);
+    const motivo = esFalla
+      ? '🔧 Falla reportada'
+      : `📍 Filtro fuera de ubicación (${Math.round(evaluacion.distanciaM)} m de ${evaluacion.nombre})`;
+    await avisarEncargados(`${motivo} — ${conductor.nombre ?? '?'} · ${r?.nombre ?? '?'}${tel}`);
   }
 
   // La salida cerrada con el botón todavía no dice desde dónde. Pedirlo aquí
