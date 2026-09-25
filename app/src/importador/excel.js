@@ -727,21 +727,23 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
           WHERE a.fecha BETWEEN GREATEST($2::date, CURRENT_DATE) AND $3
             AND a.estado <> 'reemplazada'
             AND NOT (a.id = ANY($4::bigint[]))
-            -- La ruta ya arrancó (algún marcaje ya se mandó): no se retira aunque
-            -- hoy no salga en el archivo. El Excel del día no siempre repite lo
-            -- que ya salió en la mañana, y retirarla la sacaba del Tablero a
-            -- media ruta —el conductor la seguía corriendo y el sistema decía
-            -- que ya no existía—.
+            -- Se retira si nada de esta ruta TERMINÓ todavía —"terminó" es que
+            -- el conductor contestó, no sólo que se le mandó el mensaje—. Un
+            -- marcaje enviado y sin contestar sí se puede reemplazar: el Excel
+            -- corrigió algo (unidad, conductor, hora) y el conductor recibe la
+            -- pregunta otra vez con el dato bueno. Lo que ya contestó es la
+            -- evidencia de lo que pasó y ya no se toca ni se duplica.
             AND NOT EXISTS (
-              SELECT 1 FROM marcaje m WHERE m.asignacion_id = a.id AND m.enviado_en IS NOT NULL
+              SELECT 1 FROM marcaje m WHERE m.asignacion_id = a.id AND m.respondido_en IS NOT NULL
             )`,
         [cargaId, minFecha, maxFecha, [...vigentes]],
       );
       reporte.reemplazadas = retiradas;
 
-      // Los marcajes que todavía no salían se cancelan. Los ya enviados o
-      // respondidos NO se tocan: son la evidencia de lo que sí ocurrió antes
-      // del cambio, y esa historia no se reescribe.
+      // Todo lo que no se había contestado se cancela con la asignación: ya
+      // no hay a qué responder, la reemplazó una fila nueva con el dato
+      // corregido. Lo ya contestado nunca llega aquí —la asignación que lo
+      // trae no se marcó 'reemplazada' arriba—.
       const { rowCount: cancelados } = await cliente.query(
         `UPDATE marcaje m
             SET estado = 'cancelado'
@@ -749,8 +751,8 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
           WHERE a.id = m.asignacion_id
             AND a.carga_id = $1
             AND a.estado = 'reemplazada'
-            AND m.estado = 'pendiente'
-            AND m.enviado_en IS NULL`,
+            AND m.estado <> 'cancelado'
+            AND m.respondido_en IS NULL`,
         [cargaId],
       );
       reporte.marcajesCancelados = cancelados;
