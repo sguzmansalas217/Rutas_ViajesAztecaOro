@@ -18,7 +18,7 @@ import { log } from '../log.js';
 import { abrirVentana, decidirCanal } from '../dominio/ventana.js';
 import { evaluarUbicacion, semaforoDe } from '../dominio/geocerca.js';
 import { enviarAConductor, pedirUbicacion } from '../infra/whatsapp.js';
-import { avisarEncargados } from '../dominio/avisos.js';
+import { avisarEncargados, telefonoLegible } from '../dominio/avisos.js';
 
 /**
  * Frases con las que el conductor avisa POR ESCRITO que ya llegó al filtro.
@@ -507,7 +507,7 @@ async function procesarMensaje(mensaje, valor) {
         WHERE m.id = $1`,
       [marcaje.id],
     );
-    const tel = conductor.telefono_e164 ? ` · 📞 ${conductor.telefono_e164}` : '';
+    const tel = conductor.telefono_e164 ? ` · 📞 ${telefonoLegible(conductor.telefono_e164)}` : '';
     const motivo = esFalla
       ? '🔧 Falla reportada'
       : `📍 Filtro fuera de ubicación (${Math.round(evaluacion.distanciaM)} m de ${evaluacion.nombre})`;

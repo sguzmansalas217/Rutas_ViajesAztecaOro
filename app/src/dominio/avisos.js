@@ -11,6 +11,17 @@ import { parametro, listaDeTelefonos } from '../db.js';
 import { enviarAviso } from '../infra/whatsapp.js';
 
 /**
+ * +524491119269 → +52 449 111 9269. WhatsApp detecta solo un número escrito
+ * así —subrayado, toca y da la opción de llamar— y con espacios lo reconoce
+ * mejor que pegado. Todos los conductores del cliente son +52 de 10 dígitos;
+ * si algún día hay otro país, se devuelve tal cual en vez de partir mal.
+ */
+export function telefonoLegible(e164) {
+  const m = String(e164 ?? '').match(/^\+52(\d{3})(\d{3})(\d{4})$/);
+  return m ? `+52 ${m[1]} ${m[2]} ${m[3]}` : e164;
+}
+
+/**
  * Manda `texto` a cada número de aviso.encargado_telefono, uno por uno: el
  * fallo de uno (número mal capturado, ventana cerrada y sin plantilla) no debe
  * tumbar el aviso a los demás.

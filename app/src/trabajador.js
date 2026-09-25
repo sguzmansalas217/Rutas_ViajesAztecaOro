@@ -21,7 +21,7 @@ import { filas, consultar, unaFila, parametro, pool } from './db.js';
 import { enviarAConductor } from './infra/whatsapp.js';
 import { decidirCanal } from './dominio/ventana.js';
 import { partirCelda } from './dominio/normalizar.js';
-import { avisarEncargados } from './dominio/avisos.js';
+import { avisarEncargados, telefonoLegible } from './dominio/avisos.js';
 
 const conexion = new IORedis(config.redis.url, { maxRetriesPerRequest: null });
 const colaEnvios = new Queue('envios', { connection: conexion });
@@ -111,7 +111,7 @@ async function vencerYAlertar() {
   // nueva con componente de llamada aprobado en Meta—.
   const items = vencidos
     .slice(0, 15)
-    .map((v) => `${v.conductor ?? '?'} — ${v.ruta} (${NOMBRE_MARCAJE[v.numero] ?? `marcaje ${v.numero}`})${v.telefono ? ` · 📞 ${v.telefono}` : ''}`);
+    .map((v) => `${v.conductor ?? '?'} — ${v.ruta} (${NOMBRE_MARCAJE[v.numero] ?? `marcaje ${v.numero}`})${v.telefono ? ` · 📞 ${telefonoLegible(v.telefono)}` : ''}`);
   const extra = vencidos.length > 15 ? ` …y ${vencidos.length - 15} más` : '';
   const texto = `🔴 Sin respuesta (${vencidos.length}):\n${items.map((i) => `• ${i}`).join('\n')}${extra}`;
 
