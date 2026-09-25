@@ -48,7 +48,7 @@ export function detectarEstatus(texto) {
 const RE_UNIDAD = /\b(V\s*-\s*\d{1,3}|C\s*-\s*\d{1,3}|ACM\s*\d{1,3}|TC\s*\d{1,3}|\d{1,3})\b/g;
 
 /** Deja la unidad en forma estable: 'V - 21' → 'V-21', '09' → '9'. */
-function limpiarUnidad(bruto) {
+export function limpiarUnidad(bruto) {
   const t = normalizar(bruto).replace(/\s*-\s*/, '-').replace(/\s+/g, ' ');
   const conPrefijo = t.match(/^(V|C|ACM|TC)[- ](\d{1,3})$/);
   if (conPrefijo) return `${conPrefijo[1]}-${String(Number(conPrefijo[2]))}`;

@@ -25,12 +25,16 @@ import { limiteVehiculos } from '../dominio/contrato.js';
 import { log } from '../log.js';
 import {
   normalizar, esRuido, detectarEstatus, partirCelda,
-  partirMultiples, claveCanonica,
+  partirMultiples, claveCanonica, limpiarUnidad,
 } from '../dominio/normalizar.js';
 import { leerDirectorio, esHojaTelefonos, llave } from './telefonos.js';
 
-// Columnas F..L son los siete días de la semana en todas las hojas.
-const COLUMNAS_DIA = [6, 7, 8, 9, 10, 11, 12];
+// F es la primera columna de días en las cinco hojas. Antes cada día ocupaba
+// una sola columna (F..L, siete columnas fijas); desde el formato acordado en
+// la junta del 25-sep-2026 cada día trae DOS columnas —nombre y unidad
+// separados—, así que el ancho del bloque ya no es fijo y se detecta por
+// contenido (ver detectarDias). PRIMERA_COL_DIA es lo único que sigue fijo.
+const PRIMERA_COL_DIA = 6;
 
 /**
  * Configuración por hoja. `pm: true` significa que las horas menores a las 12
@@ -40,15 +44,17 @@ const COLUMNAS_DIA = [6, 7, 8, 9, 10, 11, 12];
  *   ENTRADA TB: 1:50 → 13:50   (turno B entra por la tarde)
  *
  * La fila del encabezado NO se declara aquí: la busca localizarEncabezado()
- * leyendo el contenido, porque no es la misma en las cinco hojas.
+ * leyendo el contenido, porque no es la misma en las cinco hojas. La columna
+ * de ENCARGADO tampoco: es la primera después del bloque de días, sea cual
+ * sea su ancho (detectarDias la calcula sola).
  */
 const HOJAS = {
-  'MAÑANA':     { turno: 'MANANA',     pm: false, cols: { hora: 2, ruta: 3, nota: 4, parada: 5, encargado: 13 } },
-  'MANANA':     { turno: 'MANANA',     pm: false, cols: { hora: 2, ruta: 3, nota: 4, parada: 5, encargado: 13 } },
-  'TARDE':      { turno: 'TARDE',      pm: true,  cols: { hora: 2, ruta: 3, nota: 4, parada: 5, encargado: 13 } },
-  'NOCHE':      { turno: 'NOCHE',      pm: true,  cols: { hora: 2, ruta: 3, nota: 4, parada: 5, encargado: 13 } },
-  'ENTRADA TA': { turno: 'ENTRADA_TA', pm: false, cols: { ruta: 2, nota: 3, hora: 4, salida: 5, encargado: 13 } },
-  'ENTRADA TB': { turno: 'ENTRADA_TB', pm: true,  cols: { ruta: 2, nota: 3, hora: 4, salida: 5, encargado: 13 } },
+  'MAÑANA':     { turno: 'MANANA',     pm: false, cols: { hora: 2, ruta: 3, nota: 4, parada: 5 } },
+  'MANANA':     { turno: 'MANANA',     pm: false, cols: { hora: 2, ruta: 3, nota: 4, parada: 5 } },
+  'TARDE':      { turno: 'TARDE',      pm: true,  cols: { hora: 2, ruta: 3, nota: 4, parada: 5 } },
+  'NOCHE':      { turno: 'NOCHE',      pm: true,  cols: { hora: 2, ruta: 3, nota: 4, parada: 5 } },
+  'ENTRADA TA': { turno: 'ENTRADA_TA', pm: false, cols: { ruta: 2, nota: 3, hora: 4, salida: 5 } },
+  'ENTRADA TB': { turno: 'ENTRADA_TB', pm: true,  cols: { ruta: 2, nota: 3, hora: 4, salida: 5 } },
 };
 
 // ── Lectura de celdas ───────────────────────────────────────────────────────
@@ -98,6 +104,50 @@ function horaDe(celda, esPm) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
 }
 
+// Excel a veces guarda una fecha como número de serie crudo en vez de tipo
+// fecha —pasa al copiar/pegar una celda sin conservar formato, o al duplicar
+// una columna a mano—. 25000-60000 cubre 1968-2064, ancho de sobra para no
+// confundir un número de serie con una unidad (las unidades del archivo real
+// no pasan de 3 dígitos).
+function comoFecha(v) {
+  if (v instanceof Date) return v;
+  if (typeof v === 'number' && v > 25000 && v < 60000) {
+    return new Date(Date.UTC(1899, 11, 30) + v * 86400000);
+  }
+  return null;
+}
+
+const fechaISO = (v) => `${v.getUTCFullYear()}-${String(v.getUTCMonth() + 1).padStart(2, '0')}-${String(v.getUTCDate()).padStart(2, '0')}`;
+
+/**
+ * Arma el bloque de días de una fila, columna por columna desde
+ * PRIMERA_COL_DIA, y se detiene en la primera que no sea fecha —ahí empieza
+ * ENCARGADO, tenga rótulo o no—.
+ *
+ * Cada día puede venir en UNA columna (formato viejo: 'NOMBRE UNIDAD' junto)
+ * o en DOS (formato nuevo, acordado en la junta del 25-sep-2026: nombre y
+ * unidad separados). Se detecta solo: si la columna siguiente trae la MISMA
+ * fecha, es la mitad derecha del mismo día, no el día siguiente. No se asume
+ * un ancho fijo para no tener que tocar código el día que el cliente termine
+ * de convertir todas sus hojas —puede haber una mezcla mientras tanto—.
+ *
+ * @returns {{ colNombre: number, colUnidad: number, fecha: string }[]}
+ */
+function detectarDias(hoja, filaFechas) {
+  const fila = hoja.getRow(filaFechas);
+  const dias = [];
+  let c = PRIMERA_COL_DIA;
+  while (c <= hoja.columnCount) {
+    const v = comoFecha(fila.getCell(c).value);
+    if (!v) break;
+    const siguiente = comoFecha(fila.getCell(c + 1).value);
+    const esPar = siguiente && fechaISO(siguiente) === fechaISO(v);
+    dias.push({ colNombre: c, colUnidad: esPar ? c + 1 : c, fecha: fechaISO(v) });
+    c += esPar ? 2 : 1;
+  }
+  return dias;
+}
+
 /**
  * Las fechas de la semana NO están en la misma fila en las cinco hojas:
  *
@@ -115,23 +165,19 @@ function localizarEncabezado(hoja) {
   const limite = Math.min(hoja.rowCount, 20);
   let filaFechas = 0;
   let filaEtiquetas = 0;
-  const fechas = {};
+  let dias = [];
 
   for (let nf = 1; nf <= limite; nf++) {
     const fila = hoja.getRow(nf);
 
     // ¿Es la fila de fechas? Se exigen al menos 4 días para no confundirla
     // con una celda suelta con fecha.
-    const enEstaFila = {};
-    for (const col of COLUMNAS_DIA) {
-      const v = fila.getCell(col).value;
-      if (v instanceof Date) {
-        enEstaFila[col] = `${v.getUTCFullYear()}-${String(v.getUTCMonth() + 1).padStart(2, '0')}-${String(v.getUTCDate()).padStart(2, '0')}`;
+    if (!filaFechas) {
+      const candidatos = detectarDias(hoja, nf);
+      if (candidatos.length >= 4) {
+        filaFechas = nf;
+        dias = candidatos;
       }
-    }
-    if (!filaFechas && Object.keys(enEstaFila).length >= 4) {
-      filaFechas = nf;
-      Object.assign(fechas, enEstaFila);
     }
 
     // ¿Es la fila de etiquetas? Lleva 'RUTA' en las primeras columnas.
@@ -142,9 +188,14 @@ function localizarEncabezado(hoja) {
     }
   }
 
+  const fechas = Object.fromEntries(dias.map((d) => [d.colNombre, d.fecha]));
+  // La columna de ENCARGADO es la primera después del bloque de días —tenga
+  // rótulo o no: ENTRADA TA/TB no lo escriben, pero el dato sí está ahí—.
+  const colEncargado = dias.length ? dias[dias.length - 1].colUnidad + 1 : null;
+
   // Los datos empiezan después de la última de las dos, sean cuales sean.
   const ultima = Math.max(filaFechas, filaEtiquetas);
-  return { fechas, filaFechas, filaEtiquetas, primeraFilaDatos: ultima + 1 };
+  return { fechas, dias, colEncargado, filaFechas, filaEtiquetas, primeraFilaDatos: ultima + 1 };
 }
 
 /**
@@ -152,8 +203,10 @@ function localizarEncabezado(hoja) {
  * tiene texto en B pero ni hora ni conductores. Rompe el parseo lineal ingenuo:
  * hay que reconocerla y usarla como etiqueta de las filas siguientes.
  */
-function esFilaSeccion(fila, cfg) {
-  const hayConductores = COLUMNAS_DIA.some((c) => textoDe(fila.getCell(c)).trim() !== '');
+function esFilaSeccion(fila, cfg, dias) {
+  const hayConductores = dias.some(
+    (d) => textoDe(fila.getCell(d.colNombre)).trim() !== '' || textoDe(fila.getCell(d.colUnidad)).trim() !== '',
+  );
   if (hayConductores) return false;
   const hora = fila.getCell(cfg.cols.hora).value;
   const b = normalizar(textoDe(fila.getCell(2)));
@@ -487,7 +540,7 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
         continue;
       }
 
-      const { fechas, primeraFilaDatos } = localizarEncabezado(hoja);
+      const { fechas, dias, colEncargado, primeraFilaDatos } = localizarEncabezado(hoja);
       if (Object.keys(fechas).length === 0) {
         reporte.ignoradas.push(`${hoja.name} (no se encontró la fila de fechas)`);
         continue;
@@ -503,7 +556,7 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
       for (let nf = primeraFilaDatos; nf <= hoja.rowCount; nf++) {
         const fila = hoja.getRow(nf);
 
-        if (esFilaSeccion(fila, cfg)) {
+        if (esFilaSeccion(fila, cfg, dias)) {
           seccion = normalizar(textoDe(fila.getCell(2)));
           continue;
         }
@@ -519,25 +572,60 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
           salida: cfg.cols.salida ? horaDe(fila.getCell(cfg.cols.salida), cfg.pm) : null,
           parada: cfg.cols.parada ? textoDe(fila.getCell(cfg.cols.parada)).trim() || null : null,
           seccion,
-          encargado: normalizar(textoDe(fila.getCell(cfg.cols.encargado))) || null,
+          encargado: colEncargado ? normalizar(textoDe(fila.getCell(colEncargado))) || null : null,
         }, memo);
 
-        for (const col of COLUMNAS_DIA) {
-          const fecha = fechas[col];
+        for (const dia of dias) {
+          const { colNombre, colUnidad, fecha } = dia;
           if (!fecha) continue;
+          const col = colNombre; // ancla para reportes ('celda': F12, etc.)
 
-          const crudo = textoDe(fila.getCell(col)).trim();
+          // Si el día ya viene partido (formato acordado en la junta del
+          // 25-sep-2026), la unidad es un DATO de su propia columna, no una
+          // adivinanza: no pasa por partirCelda(). El formato viejo —un día,
+          // una celda— sigue funcionando exactamente igual que antes.
+          const yaPartido = colUnidad !== colNombre;
+          const textoNombreCelda = textoDe(fila.getCell(colNombre)).trim();
+          const textoUnidadCelda = yaPartido ? textoDe(fila.getCell(colUnidad)).trim() : '';
+          const crudo = yaPartido ? `${textoNombreCelda} ${textoUnidadCelda}`.trim() : textoNombreCelda;
           if (!crudo || esRuido(crudo)) continue;
 
           // Una celda puede traer dos conductores: 'ARMANDO 63/JUAN F 49'
-          const partes = crudo.includes('/') ? partirMultiples(crudo) : [normalizar(crudo)];
+          // (formato viejo) o 'ARMANDO/JUAN F' + '63/49' en columnas
+          // separadas (formato nuevo, misma idea, una unidad por nombre).
+          let partes;
+          if (yaPartido && (textoNombreCelda.includes('/') || textoUnidadCelda.includes('/'))) {
+            const nombres = partirMultiples(textoNombreCelda);
+            const unidades = textoUnidadCelda.split('/').map((u) => u.trim()).filter(Boolean);
+            partes = nombres.map((n, i) => ({
+              texto: `${n} ${unidades[i] ?? ''}`.trim(),
+              conocido: true,
+              nombreConocido: normalizar(n),
+              unidadConocida: unidades[i] ? limpiarUnidad(unidades[i]) : null,
+            }));
+          } else if (yaPartido) {
+            partes = [{
+              texto: normalizar(crudo),
+              conocido: true,
+              nombreConocido: normalizar(textoNombreCelda),
+              unidadConocida: textoUnidadCelda ? limpiarUnidad(textoUnidadCelda) : null,
+            }];
+          } else {
+            const brutos = crudo.includes('/') ? partirMultiples(crudo) : [normalizar(crudo)];
+            partes = brutos.map((texto) => ({ texto, conocido: false, nombreConocido: null, unidadConocida: null }));
+          }
           if (partes.length > 1) {
             reporte.multiples.push({ hoja: hoja.name, celda: `${colLetra(col)}${nf}`, texto: crudo });
           }
 
-          for (const parte of partes) {
+          for (const { texto: parte, conocido, nombreConocido, unidadConocida } of partes) {
             const estatus = detectarEstatus(parte);
-            const { nombre, unidad } = partirCelda(parte);
+            // Con el día ya partido, nombre y unidad son datos de sus propias
+            // columnas: no hay nada que adivinar. partirCelda() sólo entra
+            // cuando el día sigue en el formato viejo (una celda).
+            const guess = conocido ? null : partirCelda(parte);
+            const nombre = conocido ? nombreConocido : guess.nombre;
+            const unidad = conocido ? unidadConocida : guess.unidad;
             const unidadCanon = claveCanonica(unidad, fusionarV);
 
             // TELEFONOS es el padrón de a quién de verdad se monitorea. El
