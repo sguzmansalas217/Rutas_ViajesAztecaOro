@@ -20,8 +20,7 @@ const probando = ref(false);
 
 const telefonos = ref(['']);
 const espera = ref(5);
-const plantillaRuta = ref('');
-const guardado = ref({ telefonos: [], espera: 5, plantilla: '', plantillaRuta: '' });
+const guardado = ref({ telefonos: [], espera: 5, plantilla: '' });
 
 // Se teclea como se dicta —10 dígitos— y se guarda en E.164, que es lo único
 // que Meta acepta. Si viene con lada del país se respeta tal cual.
@@ -55,7 +54,6 @@ const normalizados = computed(() => filas.value.map((f) => f.normalizado).filter
 const valido = computed(() => filas.value.every((f) => f.valido) && normalizados.value.length <= MAX_TELEFONOS);
 const cambio = computed(() => {
   if (Number(espera.value) !== guardado.value.espera) return true;
-  if (plantillaRuta.value.trim() !== guardado.value.plantillaRuta) return true;
   const a = [...normalizados.value].sort();
   const b = [...guardado.value.telefonos].sort();
   return JSON.stringify(a) !== JSON.stringify(b);
@@ -80,11 +78,9 @@ async function cargar() {
       telefonos: lista,
       espera: Number(p['alerta.espera_min'] ?? 5),
       plantilla: String(p['wa.plantilla_alerta'] ?? ''),
-      plantillaRuta: String(p['wa.plantilla_alerta_ruta'] ?? '').trim(),
     };
     telefonos.value = lista.length ? lista.map(soloDigitos) : [''];
     espera.value = guardado.value.espera;
-    plantillaRuta.value = guardado.value.plantillaRuta;
   } catch (e) {
     error.value = e.message;
   } finally {
@@ -97,7 +93,6 @@ async function guardar() {
   try {
     await api.put('/catalogos/parametros/aviso.encargado_telefono', { valor: normalizados.value });
     await api.put('/catalogos/parametros/alerta.espera_min', { valor: Number(espera.value) });
-    await api.put('/catalogos/parametros/wa.plantilla_alerta_ruta', { valor: plantillaRuta.value.trim() });
     await cargar();
     aviso.value = guardado.value.telefonos.length
       ? `Guardado. Manda una prueba para comprobar que sí ${guardado.value.telefonos.length > 1 ? 'les llega a todos' : 'llega'}.`
@@ -208,13 +203,6 @@ onMounted(cargar);
       <p class="tenue-txt">
         Desde que sale el mensaje. Con {{ espera }} min, un conductor que contesta
         al minuto {{ Number(espera) + 1 }} ya salió en la alerta.
-      </p>
-
-      <label for="pruta" style="margin-top:14px">Plantilla para falla y filtro fuera de ubicación</label>
-      <input id="pruta" v-model="plantillaRuta" :disabled="!esAdmin" placeholder="alerta_ruta" autocomplete="off" />
-      <p class="tenue-txt">
-        Nombre exacto de la plantilla aprobada en Meta, con una variable <code v-pre>{{1}}</code>.
-        Vacío: esos avisos sólo llegan si el número principal escribió en las últimas 24 h.
       </p>
 
       <button v-if="esAdmin" :disabled="guardando || !cambio || !valido" @click="guardar">

@@ -508,10 +508,9 @@ async function procesarMensaje(mensaje, valor) {
 
   // Falla reportada o filtro fuera de la geocerca: los dos son rojo CON
   // respuesta, así que nunca "vencen" y vencerYAlertar() nunca los ve. Se
-  // avisa aquí mismo, ya, sin esperar. Usan su propia plantilla
-  // (wa.plantilla_alerta_ruta) y no la de "sin respuesta", que avisaría con
-  // las palabras equivocadas; mientras ese parámetro esté vacío, sólo sale si
-  // la ventana del encargado ya está abierta.
+  // avisa aquí mismo, ya, sin esperar. Con la ventana cerrada se reusa la
+  // plantilla de "sin respuesta" (decisión del cliente): el motivo real va en
+  // la variable del detalle.
   if (esFalla || fueraDeFiltro) {
     const r = await unaFila(
       `SELECT ru.nombre FROM marcaje m
@@ -526,8 +525,8 @@ async function procesarMensaje(mensaje, valor) {
       : `📍 Filtro fuera de ubicación (${Math.round(evaluacion.distanciaM)} m de ${evaluacion.nombre})`;
     const detalle = `${motivo} — ${conductor.nombre ?? '?'} · ${r?.nombre ?? '?'}${tel}`;
     await avisarEncargados(detalle, {
-      claveplantilla: 'wa.plantilla_alerta_ruta',
-      variables: [detalle],
+      claveplantilla: 'wa.plantilla_alerta',
+      variables: ['1', detalle],
       contactos: conductor.telefono_e164
         ? [{ nombre: conductor.nombre ?? conductor.telefono_e164, telefono: conductor.telefono_e164 }]
         : [],
