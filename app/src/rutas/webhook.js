@@ -119,6 +119,10 @@ export default async function webhook(app) {
   });
 }
 
+// Meta manda los estados en inglés; el CHECK de mensaje_saliente los tiene en
+// español. Sin traducir, el UPDATE tronaba y el error de entrega se perdía.
+const ESTADOS_META = { sent: 'enviado', delivered: 'entregado', read: 'leido', failed: 'fallido' };
+
 async function procesar(cuerpo) {
   for (const entrada of cuerpo?.entry ?? []) {
     for (const cambio of entrada.changes ?? []) {
@@ -127,9 +131,18 @@ async function procesar(cuerpo) {
         await procesarMensaje(mensaje, valor);
       }
       for (const estado of valor.statuses ?? []) {
+        const traducido = ESTADOS_META[estado.status];
+        if (!traducido) continue;
+        const error = estado.errors?.[0];
+        if (error) log.error({ wa: estado.id, recipiente: estado.recipient_id, error }, 'Meta reportó falla de entrega');
         await consultar(
-          `UPDATE mensaje_saliente SET estado = $2, actualizado_en = now() WHERE wa_message_id = $1`,
-          [estado.id, estado.status],
+          `UPDATE mensaje_saliente
+              SET estado = $2,
+                  error = COALESCE($3, error),
+                  costo_usd = CASE WHEN $2 = 'fallido' THEN 0 ELSE costo_usd END,
+                  actualizado_en = now()
+            WHERE wa_message_id = $1`,
+          [estado.id, traducido, error ? `${error.code}: ${error.title ?? error.message ?? ''}` : null],
         );
       }
     }

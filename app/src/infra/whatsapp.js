@@ -9,7 +9,7 @@
 //   3. En desarrollo WA_SIMULADO=1 escribe al log en vez de llamar a Meta.
 // ============================================================================
 import { config } from '../config.js';
-import { consultar, parametro } from '../db.js';
+import { consultar, unaFila, parametro } from '../db.js';
 import { log } from '../log.js';
 import { decidirCanal } from '../dominio/ventana.js';
 
@@ -214,7 +214,19 @@ async function registrarAviso({ tipo, plantilla = null, cuerpo, r = null, costoU
 export async function enviarAviso(telefono, texto, respaldo = null) {
   if (!telefono) return { ok: false, canal: null, costoUsd: 0, error: 'No hay número configurado' };
 
-  try {
+  // Meta acepta el texto libre con 200 aunque la ventana esté cerrada y avisa
+  // el 131047 después, por el webhook de estados: el catch de abajo nunca se
+  // entera. Por eso la ventana se decide aquí, con lo que ese número escribió.
+  const horas = Number(await parametro('wa.ventana_horas', 24));
+  const escribio = await unaFila(
+    `SELECT 1 FROM mensaje_entrante
+      WHERE right(regexp_replace(telefono_e164, '\\D', '', 'g'), 10) = right(regexp_replace($1, '\\D', '', 'g'), 10)
+        AND recibido_en > now() - ($2 || ' hours')::interval
+      LIMIT 1`,
+    [telefono, String(horas)],
+  );
+
+  if (escribio || !respaldo?.plantilla) try {
     const r = await llamarMeta({
       messaging_product: 'whatsapp', to: telefono, type: 'text', text: { body: texto },
     });
