@@ -36,7 +36,10 @@ export function telefonoLegible(e164) {
  * aviso como texto libre: tras una plantilla la ventana sigue cerrada y Meta
  * descartaría la tarjeta sin avisar.
  */
-export async function avisarEncargados(texto, { claveplantilla = null, variables = null, contactos = [] } = {}) {
+export async function avisarEncargados(textoBase, { claveplantilla = null, variables = null, contactos = [] } = {}) {
+  // Toda alerta arranca con 🔴 para distinguirla a simple vista en el chat.
+  // La plantilla ya lo trae en su cuerpo, por eso va aquí y no en las variables.
+  const texto = textoBase.startsWith('🔴') ? textoBase : `🔴 ${textoBase}`;
   const telefonosAviso = listaDeTelefonos(await parametro('aviso.encargado_telefono', []));
   if (!telefonosAviso.length) {
     log.warn('sin aviso.encargado_telefono: el aviso no se manda a nadie');
