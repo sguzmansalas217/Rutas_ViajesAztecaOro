@@ -263,6 +263,24 @@ export default async function catalogos(app) {
     return g;
   });
 
+  // Los marcajes que ya se midieron contra ella conservan su distancia y su
+  // dentro/fuera; sólo pierden la referencia al punto. Sin soltar esa llave
+  // foránea primero, la base rechaza el DELETE.
+  app.delete('/geocercas/:id', { preHandler: [editar] }, async (req, reply) => {
+    const id = Number(req.params.id);
+    const g = await enTransaccion(async (cliente) => {
+      await cliente.query('UPDATE marcaje SET geocerca_id = NULL WHERE geocerca_id = $1', [id]);
+      const r = await cliente.query('DELETE FROM geocerca WHERE id = $1 RETURNING id, nombre', [id]);
+      return r.rows[0];
+    });
+    if (!g) return reply.code(404).send({ error: 'No existe esa geocerca' });
+    await auditar({
+      usuarioId: req.user.id, accion: 'elimina_geocerca', entidad: 'geocerca',
+      entidadId: g.id, detalle: { nombre: g.nombre }, ip: req.ip,
+    });
+    return g;
+  });
+
   //  De dónde salen las coordenadas buenas. Teclearlas de Google Maps es
   //  adivinar dónde se para de verdad el conductor; las que ya mandaron los
   //  conductores son el punto real, medido en el lugar. Se listan las del

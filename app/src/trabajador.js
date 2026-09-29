@@ -115,7 +115,13 @@ async function vencerYAlertar() {
   const extra = vencidos.length > 15 ? ` …y ${vencidos.length - 15} más` : '';
   const texto = `🔴 Sin respuesta (${vencidos.length}):\n${items.map((i) => `• ${i}`).join('\n')}${extra}`;
 
-  await avisarEncargados(texto, [String(vencidos.length), items.join(' · ') + extra]);
+  const contactos = [...new Map(vencidos.filter((v) => v.telefono)
+    .map((v) => [v.telefono, { nombre: v.conductor ?? v.telefono, telefono: v.telefono }])).values()];
+  await avisarEncargados(texto, {
+    claveplantilla: 'wa.plantilla_alerta',
+    variables: [String(vencidos.length), items.join(' · ') + extra],
+    contactos,
+  });
 }
 
 // ── Procesador de la cola de envíos ─────────────────────────────────────────

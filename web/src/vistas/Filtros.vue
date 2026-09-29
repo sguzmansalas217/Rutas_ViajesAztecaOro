@@ -92,6 +92,21 @@ async function alternar(g) {
   }
 }
 
+async function eliminar(g) {
+  const aviso2 = g.usos ? `\n\nYa validó ${g.usos} marcajes; conservan su resultado, pero sin el nombre del filtro.` : '';
+  if (!confirm(`¿Eliminar el filtro «${g.nombre}»?${aviso2}`)) return;
+  error.value = ''; aviso.value = ''; alternando.value = g.id;
+  try {
+    await api.delete(`/catalogos/geocercas/${g.id}`);
+    aviso.value = `Eliminado «${g.nombre}».`;
+    await cargar();
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    alternando.value = 0;
+  }
+}
+
 // Convierte una ubicación que ya mandó un conductor en el formulario de arriba.
 // Es la forma buena de dar de alta un filtro: el punto salió del lugar, no de
 // un mapa. El nombre se propone con la parada inicial de la ruta.
@@ -266,6 +281,7 @@ onMounted(cargar);
           <button class="tenue" :disabled="alternando === g.id" @click="alternar(g)">
             {{ g.activo ? 'Apagar' : 'Encender' }}
           </button>
+          <button class="tenue" :disabled="alternando === g.id" @click="eliminar(g)">Eliminar</button>
         </td>
       </tr>
       <tr v-if="!cercas.length">

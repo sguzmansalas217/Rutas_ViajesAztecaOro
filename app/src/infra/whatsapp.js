@@ -193,6 +193,35 @@ async function registrarAviso({ tipo, plantilla = null, cuerpo, r = null, costoU
 }
 
 /**
+ * Tarjeta de contacto: en WhatsApp sale con botón «Llamar» de un toque, cosa
+ * que el número subrayado dentro del texto no garantiza en todos los
+ * teléfonos. Es mensaje libre: sólo se entrega con la ventana abierta.
+ *
+ * @param {string} telefono              E.164 de quien la recibe
+ * @param {{nombre: string, telefono: string}[]} contactos
+ */
+export async function enviarContactos(telefono, contactos) {
+  const lista = contactos.filter((c) => c.telefono).slice(0, 10);
+  if (!telefono || !lista.length) return;
+  const cuerpo = lista.map((c) => `${c.nombre} ${c.telefono}`).join(' | ');
+  try {
+    const r = await llamarMeta({
+      messaging_product: 'whatsapp',
+      to: telefono,
+      type: 'contacts',
+      contacts: lista.map((c) => ({
+        name: { formatted_name: c.nombre || c.telefono, first_name: c.nombre || c.telefono },
+        phones: [{ phone: c.telefono, type: 'CELL', wa_id: c.telefono.replace(/\D/g, '') }],
+      })),
+    });
+    await registrarAviso({ tipo: 'libre', cuerpo: `contacto: ${cuerpo}`, r });
+  } catch (e) {
+    log.error({ err: e, telefono }, 'no se pudo enviar la tarjeta de contacto');
+    await registrarAviso({ tipo: 'libre', cuerpo: `contacto: ${cuerpo}`, estado: 'fallido', error: e.message });
+  }
+}
+
+/**
  * Aviso a un encargado o al operador. Va al número que traiga configurado.
  *
  * WhatsApp no deja escribirle primero a nadie: el texto libre sólo se entrega

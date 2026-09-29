@@ -55,6 +55,7 @@ export const api = {
   get: (ruta) => pedir('GET', ruta),
   post: (ruta, cuerpo) => pedir('POST', ruta, cuerpo),
   put: (ruta, cuerpo) => pedir('PUT', ruta, cuerpo),
+  delete: (ruta) => pedir('DELETE', ruta),
 };
 
 export const hayToken = () => Boolean(token.value);
