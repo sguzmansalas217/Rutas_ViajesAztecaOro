@@ -27,7 +27,7 @@ import {
   normalizar, esRuido, detectarEstatus, partirCelda,
   partirMultiples, claveCanonica, limpiarUnidad,
 } from '../dominio/normalizar.js';
-import { leerDirectorio, esHojaTelefonos, llave } from './telefonos.js';
+import { leerDirectorio, esHojaTelefonos, llave, nombreClave } from './telefonos.js';
 
 // F es la primera columna de días en las cinco hojas. Antes cada día ocupaba
 // una sola columna (F..L, siete columnas fijas); desde el formato acordado en
@@ -360,7 +360,7 @@ async function resolverConductor(cliente, textoCelda, nombre, unidad, crear, mem
   const k = llave(nombre, unidad);
   let delDirectorio = tels?.dir?.mapa.get(k) ?? null;
   if (!delDirectorio && tels) {
-    const porNombre = tels.dir.porNombre.get(nombre);
+    const porNombre = tels.dir.porNombre.get(nombreClave(nombre));
     if (porNombre?.length === 1) delDirectorio = porNombre[0];
   }
   const kDirectorio = delDirectorio ? llave(delDirectorio.nombre, delDirectorio.unidad) : null;
@@ -387,7 +387,8 @@ async function resolverConductor(cliente, textoCelda, nombre, unidad, crear, mem
     // justo el caso de los dos OSCAR, adivinar mal manda el WhatsApp a quien
     // no es.
     const homonimos = await cliente.query(
-      'SELECT id, telefono_e164 IS NOT NULL AS completo FROM conductor WHERE upper(nombre) = upper($1)',
+      `SELECT id, telefono_e164 IS NOT NULL AS completo FROM conductor
+        WHERE regexp_replace(upper(nombre), '\\s', '', 'g') = regexp_replace(upper($1), '\\s', '', 'g')`,
       [nombre],
     );
     if (nombre && homonimos.rowCount === 1) {
@@ -671,7 +672,7 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
             // hay de otra que exigir la unidad exacta.
             const enTelefonos = tels && (
               tels.dir.mapa.has(llave(nombre, unidadCanon))
-              || tels.dir.porNombre.get(nombre)?.length === 1
+              || tels.dir.porNombre.get(nombreClave(nombre))?.length === 1
             );
             if (tels && !enTelefonos) {
               reporte.fueraDeTelefonos++;
@@ -758,15 +759,17 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
       for (const [k, f] of tels.dir.mapa) {
         if (tels.aplicadas.has(k)) continue;
 
+        // Formato oficial (oct 2026): la hoja ya no trae unidad, f.unidad es
+        // null y se amarra sólo por nombre —los nombres ya vienen únicos—.
         const { rows } = await cliente.query(
-          `SELECT c.id, count(*) AS asignaciones
+          `SELECT c.id, count(a.id) AS asignaciones
              FROM conductor c
-             JOIN asignacion a ON a.conductor_id = c.id
-             JOIN vehiculo   v ON v.id = a.vehiculo_id
-            WHERE upper(c.nombre) = $1
-              AND v.clave = $2
+             LEFT JOIN asignacion a ON a.conductor_id = c.id
+             LEFT JOIN vehiculo   v ON v.id = a.vehiculo_id
+            WHERE regexp_replace(upper(c.nombre), '\\s', '', 'g') = regexp_replace($1, '\\s', '', 'g')
+              AND ($2::text IS NULL OR v.clave = $2)
             GROUP BY c.id
-            ORDER BY count(*) DESC, c.id`,
+            ORDER BY count(a.id) DESC, c.id`,
           [f.nombre, f.unidad],
         );
 

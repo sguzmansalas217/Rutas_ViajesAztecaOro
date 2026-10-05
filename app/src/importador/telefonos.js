@@ -38,9 +38,33 @@ export function esHojaTelefonos(nombre) {
   return normalizar(nombre).includes('TELEFONO');
 }
 
-const COL = { consecutivo: 1, ruta: 2, nombre: 3, unidad: 4, telefono: 5 };
+// Formato viejo (ago 2026). El oficial desde oct 2026 es sólo NOMBRE | TELEFONO,
+// sin unidad: los nombres ya vienen únicos (ANGEL1, HECTOR2) y la unidad se lee
+// de la programación. Las columnas se detectan en detectarColumnas().
+const COL_VIEJO = { consecutivo: 1, ruta: 2, nombre: 3, unidad: 4, telefono: 5 };
+
+const pareceTelefono = (t) => /^[\d\s()+-]{7,}$/.test(t) && t.replace(/\D/g, '').length >= 7;
+
+/**
+ * La columna del teléfono es la que más valores con forma de teléfono tiene.
+ * Si cae en E es el formato viejo (con consecutivo y unidad); si no, el nombre
+ * es la columna inmediata a la izquierda y no hay unidad.
+ */
+function detectarColumnas(hoja) {
+  const conteo = new Map();
+  for (let nf = 1; nf <= hoja.rowCount; nf++) {
+    const f = hoja.getRow(nf);
+    for (let c = 1; c <= 6; c++) {
+      if (pareceTelefono(textoDe(f, c))) conteo.set(c, (conteo.get(c) ?? 0) + 1);
+    }
+  }
+  const [colTel] = [...conteo.entries()].sort((a, b) => b[1] - a[1])[0] ?? [];
+  if (!colTel || colTel === COL_VIEJO.telefono) return COL_VIEJO;
+  return { consecutivo: null, ruta: null, nombre: colTel - 1, unidad: null, telefono: colTel };
+}
 
 function textoDe(fila, col) {
+  if (!col) return '';
   const v = fila.getCell(col).value;
   if (v == null) return '';
   if (typeof v === 'object' && !(v instanceof Date)) {
@@ -69,9 +93,18 @@ export function unidadDeHoja(bruto, fusionarV = true) {
   return unidad ? claveCanonica(unidad, fusionarV) : null;
 }
 
+/**
+ * El nombre como llave, sin espacios: el cliente escribe 'DON CHUY' en la
+ * programación y 'DONCHUY' en TELEFONOS (y 'FRANCISCO BELTRAN' /
+ * 'FRANCISCOBELTRAN'). Es la misma persona; un espacio no distingue a nadie.
+ */
+export function nombreClave(nombre) {
+  return normalizar(nombre).replace(/\s+/g, '');
+}
+
 /** Llave del directorio. Mismo criterio que el conductor: nombre + unidad. */
 export function llave(nombre, unidad) {
-  return `${normalizar(nombre)}|${unidad ?? ''}`;
+  return `${nombreClave(nombre)}|${unidad ?? ''}`;
 }
 
 /**
@@ -87,6 +120,7 @@ export function leerDirectorio(libro, fusionarV = true) {
   const hoja = libro.worksheets.find((h) => esHojaTelefonos(h.name));
   if (!hoja) return null;
 
+  const COL = detectarColumnas(hoja);
   const filas = [];
   for (let nf = 1; nf <= hoja.rowCount; nf++) {
     const f = hoja.getRow(nf);
@@ -96,12 +130,18 @@ export function leerDirectorio(libro, fusionarV = true) {
     const unidadBruta = textoDe(f, COL.unidad);
     const telBruto = textoDe(f, COL.telefono);
 
-    // Fila de bloque ('VAO', 'ORO'): sólo trae texto en B. Se salta; el bloque
-    // no cambia a quién pertenece el número, así que ni se guarda.
-    if (!consecutivo && rutaTexto && !nombre && !unidadBruta && !telBruto) continue;
-    // El consecutivo numérico de la columna A es lo que distingue una fila de
-    // datos de los encabezados y de la basura de pie de página.
-    if (!/^\d+$/.test(consecutivo)) continue;
+    if (COL.consecutivo) {
+      // Fila de bloque ('VAO', 'ORO'): sólo trae texto en B. Se salta; el bloque
+      // no cambia a quién pertenece el número, así que ni se guarda.
+      if (!consecutivo && rutaTexto && !nombre && !unidadBruta && !telBruto) continue;
+      // El consecutivo numérico de la columna A es lo que distingue una fila de
+      // datos de los encabezados y de la basura de pie de página.
+      if (!/^\d+$/.test(consecutivo)) continue;
+    } else if (!/[A-Z]/.test(nombre) || /^(NOMBRE|CONDUCTOR|OPERADOR)$/.test(nombre)) {
+      // Sin consecutivo, una fila de datos es la que trae un nombre con letras
+      // que no sea el rótulo de la columna.
+      continue;
+    }
     if (!nombre && !telBruto) continue;
 
     filas.push({
@@ -162,7 +202,8 @@ export function leerDirectorio(libro, fusionarV = true) {
   const porNombre = new Map();
   for (const f of filas) {
     if (!f.telefono) continue;
-    porNombre.set(f.nombre, [...(porNombre.get(f.nombre) ?? []), f]);
+    const k = nombreClave(f.nombre);
+    porNombre.set(k, [...(porNombre.get(k) ?? []), f]);
   }
 
   return { hoja: hoja.name, filas: filas.length, mapa, porNombre, invalidos, repetidos };
