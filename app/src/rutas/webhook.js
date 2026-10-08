@@ -44,7 +44,8 @@ const AVISA_QUE_LLEGO = /alcoholim|alcohol[íi]m|filtro|ya lleg|ya estoy (en|aqu
  * exige la ubicación— porque no hay nada que comprobar: la salida es un dato
  * que sólo él tiene.
  */
-const SALIO_A_RUTA = /inicio (de )?ruta|ya (me )?sal[íi]|ya voy en ruta|ya estoy en ruta|arranqu[eé]|ya sali[oó]/i;
+// «parada»: desde oct 2026 el marcaje 4 pide confirmar la parada de inicio.
+const SALIO_A_RUTA = /inicio (de )?ruta|parada|ya (me )?sal[íi]|ya voy en ruta|ya estoy en ruta|arranqu[eé]|ya sali[oó]/i;
 
 /**
  * Formas equivalentes de un mismo celular mexicano.
@@ -523,8 +524,7 @@ async function procesarMensaje(mensaje, valor) {
     const motivo = esFalla
       ? '🔧 Falla reportada'
       : `📍 Filtro fuera de ubicación (${Math.round(evaluacion.distanciaM)} m de ${evaluacion.nombre})`;
-    const indicacion = esFalla ? '. Ponte en contacto con el coordinador para tener indicaciones' : '';
-    const detalle = `${motivo} — ${conductor.nombre ?? '?'} · ${r?.nombre ?? '?'}${tel}${indicacion}`;
+    const detalle = `${motivo} — ${conductor.nombre ?? '?'} · ${r?.nombre ?? '?'}${tel}`;
     await avisarEncargados(detalle, {
       claveplantilla: 'wa.plantilla_alerta',
       variables: ['1', detalle],
@@ -539,7 +539,7 @@ async function procesarMensaje(mensaje, valor) {
   // se manda además el genérico: serían dos mensajes para lo mismo.
   if (marcaje.numero === 4 && latitud == null && await pedirUbicacionDeSalida(conductor, marcaje)) return;
 
-  await acusarRecibo({ conductor, marcaje, semaforo, evaluacion, tieneUbicacion: latitud != null });
+  await acusarRecibo({ conductor, marcaje, semaforo, evaluacion, tieneUbicacion: latitud != null, esFalla });
 }
 
 /**
@@ -759,7 +759,15 @@ async function pedirleLaUbicacion(conductor, { marcajeId = null } = {}) {
  * mandar —si algún día abrirVentana fallara, un acuse por plantilla sería pagar
  * por decir "gracias"—.
  */
-async function acusarRecibo({ conductor, marcaje, semaforo, evaluacion, tieneUbicacion }) {
+async function acusarRecibo({ conductor, marcaje, semaforo, evaluacion, tieneUbicacion, esFalla = false }) {
+  // Un "✅ Registrado" a quien acaba de reportar la unidad averiada lo deja sin
+  // saber qué hacer: se le dice a quién acudir.
+  if (esFalla) {
+    await acusar(conductor, 'acuse.falla',
+      '🔧 Falla registrada, {nombre}. Ponte en contacto con el coordinador para tener indicaciones.', marcaje.id);
+    return;
+  }
+
   // El filtro tiene acuse propio según cómo haya quedado. Decirle "filtro
   // registrado" a quien mandó la ubicación desde otro lado es peor que no
   // contestarle: se va tranquilo con un marcaje en rojo.
