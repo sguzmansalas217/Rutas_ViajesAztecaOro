@@ -523,7 +523,8 @@ async function procesarMensaje(mensaje, valor) {
     const motivo = esFalla
       ? '🔧 Falla reportada'
       : `📍 Filtro fuera de ubicación (${Math.round(evaluacion.distanciaM)} m de ${evaluacion.nombre})`;
-    const detalle = `${motivo} — ${conductor.nombre ?? '?'} · ${r?.nombre ?? '?'}${tel}`;
+    const indicacion = esFalla ? '. Ponte en contacto con el coordinador para tener indicaciones' : '';
+    const detalle = `${motivo} — ${conductor.nombre ?? '?'} · ${r?.nombre ?? '?'}${tel}${indicacion}`;
     await avisarEncargados(detalle, {
       claveplantilla: 'wa.plantilla_alerta',
       variables: ['1', detalle],
