@@ -287,7 +287,19 @@ async function procesarMensaje(mensaje, valor) {
         WHERE a.conductor_id = $1
           AND m.numero IN (3, 4)
           AND m.respondido_en IS NULL
-          AND m.enviado_en IS NOT NULL
+          -- El filtro también acepta la ubicación mandada por su cuenta antes
+          -- de la pregunta, con la misma ventana que «ya llegué» (ver
+          -- pedirleLaUbicacion): despertar contestado y parada sin confirmar.
+          AND (
+            m.enviado_en IS NOT NULL
+            OR (
+              m.numero = 3
+              AND EXISTS (SELECT 1 FROM marcaje d WHERE d.asignacion_id = a.id
+                           AND d.numero = 1 AND d.respondido_en IS NOT NULL)
+              AND NOT EXISTS (SELECT 1 FROM marcaje s4 WHERE s4.asignacion_id = a.id
+                           AND s4.numero = 4 AND s4.respondido_en IS NOT NULL)
+            )
+          )
           AND m.estado <> 'cancelado'
           AND a.estado = 'programada'
           AND m.programado_para BETWEEN now() - interval '4 hours'
@@ -493,6 +505,7 @@ async function procesarMensaje(mensaje, valor) {
   await consultar(
     `UPDATE marcaje
         SET estado = 'respondido', respondido_en = now(), fuente = 'whatsapp',
+            enviado_en = COALESCE(enviado_en, now()),
             respuesta = $2, latitud = $3, longitud = $4,
             geocerca_id = $5, distancia_m = $6, dentro_geocerca = $7,
             semaforo = $8, nota = COALESCE(nota, $9)
@@ -689,18 +702,28 @@ async function pedirleLaUbicacion(conductor, { marcajeId = null } = {}) {
         [marcajeId, conductor.id],
       )
       : await unaFila(
-        `SELECT m.id, r.nombre AS ruta
+        `SELECT m.id, r.nombre AS ruta, m.enviado_en IS NULL AS adelantado
            FROM marcaje m
            JOIN asignacion a ON a.id = m.asignacion_id
            JOIN ruta r ON r.id = a.ruta_id
           WHERE a.conductor_id = $1
             AND m.numero = 3
             AND m.respondido_en IS NULL
-            -- Sólo el filtro que YA se mandó. Si el conductor escribe «ya
-            -- llegué» antes de que le toque el marcaje 3, no hay nada que
-            -- adelantarle: el mensaje se ignora aquí y sigue de largo hasta
-            -- el respaldo general, que no encuentra nada abierto tampoco.
-            AND m.enviado_en IS NOT NULL
+            -- El filtro lo dispara el conductor (pedido del cliente,
+            -- 2026-10-09): puede avisar que llegó aunque el marcaje 3 todavía
+            -- no le haya salido, pero sólo dentro de la ruta en marcha —ya
+            -- contestó el despertar y todavía no confirma la parada de inicio
+            -- (marcaje 4)—. Fuera de eso «ya llegué» no amarra con nada: es
+            -- la puerta que en su día le robó el marcaje 1 al 3.
+            AND (
+              m.enviado_en IS NOT NULL
+              OR (
+                EXISTS (SELECT 1 FROM marcaje d WHERE d.asignacion_id = a.id
+                         AND d.numero = 1 AND d.respondido_en IS NOT NULL)
+                AND NOT EXISTS (SELECT 1 FROM marcaje s4 WHERE s4.asignacion_id = a.id
+                         AND s4.numero = 4 AND s4.respondido_en IS NOT NULL)
+              )
+            )
             -- 'vencido' también: el filtro que ya se pintó de rojo sigue siendo
             -- el filtro, y si el conductor avisa tarde hay que pedirle el punto
             -- igual. Es la única forma de que ese rojo pase a amarillo con la
@@ -724,6 +747,18 @@ async function pedirleLaUbicacion(conductor, { marcajeId = null } = {}) {
       );
     if (!m) return false;
     if (await decidirCanal(conductor.id) !== 'libre') return false;
+
+    // Adelantado: el filtro se da por enviado ahora. Así el tic no le manda
+    // después el «¿ya llegaste?» que ya contestó, y la ubicación que llegue
+    // amarra con este marcaje por el camino normal. Si no manda el punto, se
+    // vence como cualquier marcaje enviado y avisa al encargado.
+    if (m.adelantado) {
+      await consultar(
+        `UPDATE marcaje SET estado = 'enviado', enviado_en = now(), intentos = intentos + 1
+          WHERE id = $1 AND enviado_en IS NULL`,
+        [m.id],
+      );
+    }
 
     const cuerpo = interpolar(
       await parametro('texto.marcaje3', '📍 {nombre}, comparte tu ubicación para registrar el filtro.'),
