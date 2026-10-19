@@ -10,6 +10,9 @@ import { api } from '../api.js';
 import { esAdmin } from '../sesion.js';
 
 const MAX_TELEFONOS = 5;
+// Igual que PRINCIPALES en app/src/dominio/avisos.js: los primeros N números
+// reciben la plantilla de respaldo; el resto, sólo texto libre.
+const PRINCIPALES = 3;
 
 const cargando = ref(true);
 const error = ref('');
@@ -164,14 +167,15 @@ onMounted(cargar);
 
       <label>WhatsApp que reciben las alertas</label>
       <p class="tenue-txt" style="margin-top:0">
-        El <strong>primero es el principal</strong>: a ése se le garantiza el aviso,
-        pagando plantilla si hace falta. A los demás (secundarios) sólo les llega
+        Los <strong>primeros {{ PRINCIPALES }} son principales</strong>: a ellos se les
+        garantiza el aviso, pagando plantilla si hace falta. A los demás
+        (secundarios) sólo les llega
         si escribieron algo al número del sistema en las últimas 24 h — nunca se
         paga plantilla por ellos.
       </p>
       <div v-for="(f, i) in filas" :key="i" class="barra" style="margin-bottom:6px">
         <span class="chip" style="min-width:74px; text-align:center">
-          {{ i === 0 ? 'principal' : 'secundario' }}
+          {{ i < PRINCIPALES ? 'principal' : 'secundario' }}
         </span>
         <input
           v-model="telefonos[i]" :disabled="!esAdmin"

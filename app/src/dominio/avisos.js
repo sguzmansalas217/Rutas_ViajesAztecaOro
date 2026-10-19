@@ -22,13 +22,21 @@ export function telefonoLegible(e164) {
 }
 
 /**
+ * Cuántos números de la lista son principales: a ellos se les garantiza el
+ * aviso con la plantilla de respaldo, pagando si hace falta. Del cuarto en
+ * adelante son secundarios: sólo texto libre, sólo si tienen ventana abierta.
+ * Pedido del cliente (2026-10-19): antes era uno solo.
+ */
+export const PRINCIPALES = 3;
+
+/**
  * Manda `texto` a cada número de aviso.encargado_telefono, uno por uno: el
  * fallo de uno (número mal capturado, ventana cerrada y sin plantilla) no debe
  * tumbar el aviso a los demás.
  *
- * `claveplantilla` + `variables` son el respaldo de plantilla para el PRIMERO
- * —el principal— nada más: es al único al que se le garantiza que le llegue,
- * pagando si hace falta. Si el parámetro de esa clave está vacío (plantilla
+ * `claveplantilla` + `variables` son el respaldo de plantilla para los
+ * PRINCIPALES primeros de la lista nada más: son a los únicos a los que se les
+ * garantiza que les llegue, pagando si hace falta. Si el parámetro de esa clave está vacío (plantilla
  * todavía no aprobada en Meta) no hay respaldo: se manda sólo si la ventana
  * de 24 h de ese número está abierta.
  *
@@ -49,7 +57,7 @@ export async function avisarEncargados(textoBase, { claveplantilla = null, varia
   const plantilla = claveplantilla && variables ? String(await parametro(claveplantilla, '') ?? '').trim() : '';
 
   for (const [i, telefonoAviso] of telefonosAviso.entries()) {
-    const respaldo = i === 0 && plantilla ? { plantilla, variables } : null;
+    const respaldo = i < PRINCIPALES && plantilla ? { plantilla, variables } : null;
     const r = await enviarAviso(telefonoAviso, texto, respaldo);
 
     if (r.ok) {

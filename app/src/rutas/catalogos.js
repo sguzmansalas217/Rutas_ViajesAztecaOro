@@ -5,6 +5,7 @@ import { filas, unaFila, consultar, auditar, parametros, fijarParametro, listaDe
 import { aE164, normalizar } from '../dominio/normalizar.js';
 import { esProveedor } from '../dominio/proveedor.js';
 import { enviarAviso } from '../infra/whatsapp.js';
+import { PRINCIPALES } from '../dominio/avisos.js';
 import { programarVarias } from '../dominio/programacion.js';
 import {
   estadoContrato, listarVehiculos, fijarContratado,
@@ -376,12 +377,13 @@ export default async function catalogos(app) {
     // Se prueba el camino completo, respaldo incluido: lo que interesa saber
     // no es si el texto libre sale —casi nunca sale— sino si el aviso LLEGA.
     // Cada número se prueba por separado: que uno falle no debe esconder que
-    // los otros cuatro sí funcionan. Sólo el primero (principal) tiene
-    // respaldo de plantilla, igual que en el aviso real — ver trabajador.js.
+    // los otros sí funcionan. Sólo los PRINCIPALES primeros tienen
+    // respaldo de plantilla, igual que en el aviso real — ver dominio/avisos.js.
     const plantilla = String(p['wa.plantilla_alerta'] ?? 'alerta_sin_respuesta');
     const resultados = [];
     for (const [i, telefono] of telefonos.entries()) {
-      const respaldo = i === 0
+      const principal = i < PRINCIPALES;
+      const respaldo = principal
         ? { plantilla, variables: ['1', 'PRUEBA — esto es sólo una comprobación, no hay ningún marcaje en rojo'] }
         : null;
       const r = await enviarAviso(
@@ -390,18 +392,18 @@ export default async function catalogos(app) {
         respaldo,
       );
       resultados.push(r.ok
-        ? { telefono, ok: true, canal: r.canal, costoUsd: r.costoUsd, principal: i === 0 }
+        ? { telefono, ok: true, canal: r.canal, costoUsd: r.costoUsd, principal }
         : {
           telefono,
           ok: false,
           canal: r.canal,
-          principal: i === 0,
+          principal,
           // Que falle la plantilla casi siempre es que no existe o no está
           // aprobada. Vale la pena decirlo con su nombre: si no, el
           // administrador se pone a revisar el token, que está bien. A los
           // secundarios no se les intenta la plantilla, así que ahí el
           // motivo casi siempre es simplemente "ventana cerrada".
-          error: i === 0 && r.canal === 'plantilla'
+          error: principal && r.canal === 'plantilla'
             ? `El texto libre no entró (la ventana de 24 h está cerrada) y la plantilla de respaldo «${plantilla}» tampoco: ${r.error}`
             : r.error,
           codigo: r.codigo ?? null,
