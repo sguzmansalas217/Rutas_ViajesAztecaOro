@@ -417,6 +417,14 @@ th.col-abrir, td.col-abrir { width: 1%; text-align: center; }
 }
 /* El filtro activo se marca: si no, una columna filtrada se ve igual que una
    completa y el tablero miente por omisión. */
+/* Unidad, conductor y estatus: mismo filtro que los marcajes, alineado a la
+   izquierda como el contenido de esas columnas. */
+.cab-filtro { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.cab-filtro select {
+  padding: 2px 3px; font-size: 10px; border-radius: 6px;
+  max-width: 150px; color: var(--texto2); font-weight: 600; text-transform: none;
+}
+.cab-filtro select.activo,
 .cab-faro select.activo {
   border-color: var(--marca-clara); background: var(--marca-tenue);
   color: var(--marca);

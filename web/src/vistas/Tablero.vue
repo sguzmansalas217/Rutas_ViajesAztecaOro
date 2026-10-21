@@ -313,11 +313,29 @@ function rango(a) {
 // El estatus se calcula aquí y no en la plantilla: ahí se llamaría una vez por
 // cada lugar donde se usa —texto, clase y las líneas del detalle— y en 300
 // filas eso es recorrer los marcajes mil veces en cada refresco del minuto.
+const conEstatus = computed(() => asignaciones.value.map((a) => ({ ...a, est: estatus(a) })));
+
+// Filtros por unidad, conductor y estatus. Las opciones salen de lo que hay en
+// el día que se está viendo: una lista fija dejaría opciones que no dan nada.
+const filtroUnidad = ref('');
+const filtroConductor = ref('');
+const filtroEstatus = ref('');
+const nombreDe = (a) => a.conductor ?? a.texto_origen ?? '';
+const unicos = (xs) => [...new Set(xs.filter(Boolean))]
+  .sort((x, y) => x.localeCompare(y, 'es', { numeric: true }));
+const opciones = computed(() => ({
+  unidades: unicos(conEstatus.value.map((a) => (a.unidad == null ? '' : String(a.unidad)))),
+  conductores: unicos(conEstatus.value.map(nombreDe)),
+  estatus: unicos(conEstatus.value.map((a) => a.est.texto)),
+}));
+
 const visibles = computed(() => {
-  const lista = asignaciones.value
+  const lista = conEstatus.value
     .filter((a) => filtros.value.every((f, i) => !f || color(a, i + 1) === f))
-    .map((a) => ({ ...a, est: estatus(a) }))
-    .filter((a) => !filtroClase.value || a.est.clase === filtroClase.value);
+    .filter((a) => !filtroClase.value || a.est.clase === filtroClase.value)
+    .filter((a) => !filtroUnidad.value || String(a.unidad ?? '') === filtroUnidad.value)
+    .filter((a) => !filtroConductor.value || nombreDe(a) === filtroConductor.value)
+    .filter((a) => !filtroEstatus.value || a.est.texto === filtroEstatus.value);
   return orden.value === 'rojo' ? [...lista].sort((x, y) => rango(x) - rango(y)) : lista;
 });
 
@@ -342,10 +360,14 @@ function toggleClase(c) {
   filtroClase.value = filtroClase.value === c ? '' : c;
 }
 
-const hayFiltro = computed(() => filtros.value.some(Boolean) || Boolean(filtroClase.value));
+const hayFiltro = computed(() => filtros.value.some(Boolean)
+  || Boolean(filtroClase.value || filtroUnidad.value || filtroConductor.value || filtroEstatus.value));
 function limpiarFiltros() {
   filtros.value = ['', '', '', ''];
   filtroClase.value = '';
+  filtroUnidad.value = '';
+  filtroConductor.value = '';
+  filtroEstatus.value = '';
 }
 
 async function cargar() {
@@ -412,8 +434,34 @@ onUnmounted(() => clearInterval(temporizador));
   <table>
     <thead>
       <tr>
-        <th>Hora</th><th>Ruta</th><th>Turno</th><th>Unidad</th><th>Conductor</th>
-        <th>Estatus</th>
+        <th>Hora</th><th>Ruta</th><th>Turno</th>
+        <th>
+          <div class="cab-filtro">
+            Unidad
+            <select v-model="filtroUnidad" :class="{ activo: filtroUnidad }" title="Ver sólo una unidad">
+              <option value="">Todas</option>
+              <option v-for="u in opciones.unidades" :key="u" :value="u">{{ u }}</option>
+            </select>
+          </div>
+        </th>
+        <th>
+          <div class="cab-filtro">
+            Conductor
+            <select v-model="filtroConductor" :class="{ activo: filtroConductor }" title="Ver sólo un conductor">
+              <option value="">Todos</option>
+              <option v-for="c in opciones.conductores" :key="c" :value="c">{{ c }}</option>
+            </select>
+          </div>
+        </th>
+        <th>
+          <div class="cab-filtro">
+            Estatus
+            <select v-model="filtroEstatus" :class="{ activo: filtroEstatus }" title="Ver sólo un estatus">
+              <option value="">Todos</option>
+              <option v-for="e in opciones.estatus" :key="e" :value="e">{{ e }}</option>
+            </select>
+          </div>
+        </th>
         <th v-for="d in MARCAJES" :key="d.n" class="col-faro">
           <div class="cab-faro">
             <span class="nom-faro" :title="`Marcaje ${d.n} — ${d.que}`">
