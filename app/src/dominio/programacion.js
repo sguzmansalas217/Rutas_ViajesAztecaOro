@@ -54,6 +54,51 @@ export async function programarSemana(desde, hasta) {
   if (!desde || !hasta) return 0;
   const d = desfasesDe(await parametros());
 
+  // Subir el Excel otra vez es la forma de aplicar los Tiempos a lo ya
+  // cargado (pedido del cliente, 2026-10-20: guardar en Tiempos no mueve
+  // nada, volver a subir el archivo sí). Antes el ON CONFLICT de abajo dejaba
+  // cada marcaje como nació, y eso rompió dos cosas en producción:
+  //   · Rutas cargadas con tiempos de prueba siguieron saliendo con 3 minutos
+  //     entre mensajes días después de corregir la pantalla de Tiempos.
+  //   · Una carga de otro archivo daba de baja las rutas y cancelaba sus
+  //     mensajes; al volver a subir el bueno la asignación revivía, pero sus
+  //     marcajes se quedaban 'cancelado' y el conductor no recibía nada.
+  // Sólo rutas que todavía no empiezan (ningún mensaje enviado ni contestado)
+  // y sólo hacia horas futuras: una ruta en curso no se toca nunca.
+  // Si hay otra copia viva de la misma ruta, conductor y día —celda escrita
+  // distinto entre cargas—, no se revive la cancelada: le llegaría doble.
+  const { rowCount: reprogramados } = await consultar(
+    `WITH n(numero, desfase) AS (VALUES (1, $4::int), (2, $5::int), (3, $6::int), (4, $7::int))
+     UPDATE marcaje m
+        SET estado = 'pendiente',
+            programado_para = (a.fecha + r.hora_monitoreo)::timestamp AT TIME ZONE $3
+                              + (n.desfase * interval '1 minute')
+       FROM asignacion a
+       JOIN ruta r ON r.id = a.ruta_id, n
+      WHERE m.asignacion_id = a.id
+        AND n.numero = m.numero
+        AND a.fecha BETWEEN $1 AND $2
+        AND a.estado = 'programada'
+        AND m.estado IN ('pendiente', 'cancelado')
+        AND m.enviado_en IS NULL AND m.respondido_en IS NULL
+        AND (a.fecha + r.hora_monitoreo)::timestamp AT TIME ZONE $3
+              + (n.desfase * interval '1 minute') > now()
+        AND (m.estado = 'cancelado'
+             OR m.programado_para <> (a.fecha + r.hora_monitoreo)::timestamp AT TIME ZONE $3
+                                      + (n.desfase * interval '1 minute'))
+        AND NOT EXISTS (SELECT 1 FROM marcaje x
+                         WHERE x.asignacion_id = a.id
+                           AND (x.enviado_en IS NOT NULL OR x.respondido_en IS NOT NULL))
+        AND (m.estado = 'pendiente' OR NOT EXISTS (
+              SELECT 1 FROM asignacion o
+               WHERE o.id <> a.id AND o.estado = 'programada'
+                 AND o.fecha = a.fecha AND o.ruta_id = a.ruta_id AND o.conductor_id = a.conductor_id
+                 AND (o.id < a.id OR EXISTS (SELECT 1 FROM marcaje mo
+                                              WHERE mo.asignacion_id = o.id AND mo.estado <> 'cancelado'))))`,
+    [desde, hasta, ZONA, d[1], d[2], d[3], d[4]],
+  );
+  if (reprogramados) log.info({ desde, hasta, reprogramados }, 'marcajes reprogramados con los Tiempos actuales');
+
   // Los cuatro cuelgan de hora_monitoreo. La columna ruta.hora_salida se sigue
   // importando —las hojas ENTRADA TA y TB la traen y se ve en el catálogo—,
   // pero ya no programa nada: la segunda ancla era justo lo que hacía
@@ -76,6 +121,31 @@ export async function programarSemana(desde, hasta) {
 
   log.info({ desde, hasta, marcajes: r.rowCount }, 'marcajes programados');
   return r.rowCount;
+}
+
+/**
+ * Rutas de hoy que ya no van a recibir el despertar: su hora pasó (más allá
+ * de los 15 minutos en que el trabajador todavía lo manda) y nunca salió
+ * ningún mensaje. Pasa cuando el Excel llega después de la hora de la ruta
+ * —el 2026-10-20 se subió a las 5:00 con una ruta de las 4:20— y antes la
+ * carga no decía nada: el conductor no recibía mensajes y nadie se enteraba.
+ */
+export async function rutasQueYaNoSalen() {
+  return (await consultar(
+    `SELECT r.nombre AS ruta, to_char(r.hora_monitoreo, 'HH24:MI') AS hora, c.nombre AS conductor
+       FROM asignacion a
+       JOIN ruta r ON r.id = a.ruta_id
+       JOIN conductor c ON c.id = a.conductor_id
+       JOIN marcaje m ON m.asignacion_id = a.id AND m.numero = 1
+      WHERE a.estado = 'programada'
+        AND a.fecha = (now() AT TIME ZONE $1)::date
+        AND m.programado_para <= now() - interval '15 minutes'
+        AND NOT EXISTS (SELECT 1 FROM marcaje x
+                         WHERE x.asignacion_id = a.id
+                           AND (x.enviado_en IS NOT NULL OR x.respondido_en IS NOT NULL))
+      ORDER BY r.hora_monitoreo, r.nombre`,
+    [ZONA],
+  )).rows;
 }
 
 /**

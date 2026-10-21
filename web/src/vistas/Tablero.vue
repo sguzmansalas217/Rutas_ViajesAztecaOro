@@ -116,8 +116,21 @@ function distancia(m) {
 // En qué va un marcaje, en una línea. Los cuatro casos son distintos y el
 // color solo no los separa: 'pendiente' gris puede ser "ni siquiera se le ha
 // preguntado" o "ya se le preguntó y no contesta", y son cosas opuestas.
+// Un marcaje que no salió ni va a salir: cancelado, o pendiente con su hora
+// ya pasada más allá de los 15 minutos en que el trabajador todavía lo manda
+// (el Excel llegó después de la hora de la ruta). Antes los dos casos caían en
+// «Ruta completa» o en «Sigue», y el monitorista no se enteraba de que al
+// conductor no le había llegado nada.
+const VENTANA_ENVIO_MS = 15 * 60 * 1000;
+function noSalio(m) {
+  if (m.respondido || m.enviado) return false;
+  if (m.estado === 'cancelado') return true;
+  return m.estado === 'pendiente' && new Date(m.programado).getTime() < Date.now() - VENTANA_ENVIO_MS;
+}
+
 function detalle(m) {
   if (m.estado === 'cancelado') return 'cancelado, no se envía';
+  if (noSalio(m)) return `no se envió · su hora (${hora(m.programado)}) pasó antes de cargarse`;
   if (m.fuente === 'manual') return `registrado a mano ${hora(m.respondido)} · ${m.nota || 'sin nota'}`;
   if (m.respondido) {
     const nota = m.nota ? ` · ${m.nota}` : '';
@@ -202,9 +215,12 @@ function estatus(a) {
 
   const lineas = lista.map(({ d, m }) => `${d.icono}  ${d.nombre} — ${detalle(m)}`);
   const rojos = lista.filter((x) => x.m.semaforo === 'rojo');
-  const esperando = lista.find((x) => x.m.enviado && !x.m.respondido && x.m.semaforo !== 'rojo');
+  const esperando = lista.find(
+    (x) => x.m.enviado && !x.m.respondido && x.m.semaforo !== 'rojo' && x.m.estado !== 'cancelado',
+  );
+  const perdidos = lista.filter((x) => noSalio(x.m));
   const pendientes = lista.filter(
-    (x) => !x.m.respondido && x.m.semaforo !== 'rojo' && x.m.estado !== 'cancelado',
+    (x) => !x.m.respondido && x.m.semaforo !== 'rojo' && x.m.estado !== 'cancelado' && !noSalio(x.m),
   );
   // Se cuentan aparte: «contestó tarde» es del conductor, «hubo que hablarle»
   // es del monitorista, y meterlos en el mismo saco borra el trabajo que costó
@@ -231,6 +247,19 @@ function estatus(a) {
       clase: 'espera',
       texto: `Esperando · ${esperando.d.nombre}`,
       resumen: `El mensaje salió a las ${hora(esperando.m.enviado)} y todavía no contesta: falta ${esperando.d.que}. Si no responde se pone en rojo solo.`,
+      lineas,
+    };
+  }
+  // Antes de «completa»: completa quiere decir que el conductor contestó, no
+  // que ya no queda nada por mandar.
+  if (!pendientes.length && perdidos.length) {
+    const nada = perdidos.length === lista.length;
+    return {
+      clase: nada ? 'rojo' : 'amarillo',
+      texto: nada ? 'No se envió' : 'Incompleta',
+      resumen: nada
+        ? 'A este conductor no le salió ningún mensaje: la ruta se canceló o se cargó después de su hora. Hay que hablarle.'
+        : `${perdidos.length === 1 ? 'Un marcaje no se envió' : `${perdidos.length} marcajes no se enviaron`}: se cancelaron o su hora pasó antes de cargarse.`,
       lineas,
     };
   }

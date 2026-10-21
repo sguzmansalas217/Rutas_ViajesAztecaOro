@@ -99,6 +99,20 @@ onMounted(cargarHistorial);
       </template>
     </div>
 
+    <!-- Rutas de hoy cuya hora ya pasó sin que saliera ningún mensaje: el
+         archivo llegó tarde para ellas. El sistema no las va a mandar, así
+         que alguien tiene que hablarle al conductor. -->
+    <div v-if="reporte.yaNoSalen?.length" class="error">
+      <strong>
+        {{ reporte.yaNoSalen.length === 1 ? 'Una ruta de hoy ya pasó su hora' : `${reporte.yaNoSalen.length} rutas de hoy ya pasaron su hora` }}
+        y no se les va a mandar nada por WhatsApp.
+      </strong>
+      El archivo llegó después de su hora de monitoreo. Háblale al conductor:
+      <div v-for="(r, i) in reporte.yaNoSalen" :key="i">
+        {{ r.hora }} · {{ r.ruta }} · {{ r.conductor }}
+      </div>
+    </div>
+
     <div class="tarjetas">
       <div v-for="(n, hoja) in reporte.hojas" :key="hoja" class="tarjeta">
         <div class="n">{{ n }}</div><div class="r">{{ hoja }}</div>

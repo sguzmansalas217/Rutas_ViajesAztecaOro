@@ -123,9 +123,8 @@ async function guardar() {
     await cargar();
     aviso.value = soloEspera
       ? 'Guardado. La espera de alerta ya aplica, incluso a los marcajes pendientes ahorita.'
-      : 'Guardado. La cascada de minutos aplica a los archivos que subas de aquí en '
-        + 'adelante —los marcajes ya programados no se mueven—; la espera de alerta ya '
-        + 'aplica, incluso a los pendientes ahorita.';
+      : 'Guardado. Las rutas ya cargadas no se mueven hasta que vuelvas a subir el Excel; '
+        + 'la espera de alerta ya aplica, incluso a los pendientes ahorita.';
   } catch (e) {
     error.value = e.message;
   } finally {
@@ -154,9 +153,10 @@ onMounted(cargar);
        tiempo, se mira el tablero de hoy y no se movió nada. Los marcajes se
        calculan cuando se sube el archivo, no cuando les toca salir. -->
   <div class="aviso">
-    <strong>Los cambios valen para lo que se cargue después.</strong>
-    Las horas se calculan al subir el Excel, así que un cambio a media mañana no
-    mueve los marcajes de hoy: hay que volver a cargar el archivo.
+    <strong>Los cambios se aplican al volver a subir el Excel.</strong>
+    Guardar aquí no mueve las rutas ya cargadas. Al subir el archivo se
+    recalculan todas las rutas de la semana que todavía no empiezan; las que ya
+    empezaron se quedan como iban.
   </div>
 
   <div class="cuenta">
@@ -188,8 +188,8 @@ onMounted(cargar);
       <label for="d4">4 · Salida — minutos <strong>después del filtro</strong></label>
       <input id="d4" v-model.number="v['marcaje4.retraso_min']" type="number" min="0" step="1" :disabled="!esAdmin" />
       <p class="tenue-txt">
-        Botón <em>Ya salí</em>. Si lo dice antes por su cuenta —«ya estoy en
-        ruta»— también cuenta y no se le vuelve a preguntar.
+        Botón <em>Confirmo Inicio Ruta</em>. Si lo dice antes por su cuenta —«ya
+        estoy en la parada»— también cuenta y no se le vuelve a preguntar.
       </p>
 
       <label for="tol">Tolerancia para contestar (minutos)</label>

@@ -1,7 +1,7 @@
 // Carga del Excel semanal del cliente.
 import { importarExcel } from '../importador/excel.js';
 import { filas, unaFila, auditar } from '../db.js';
-import { programarSemana } from '../dominio/programacion.js';
+import { programarSemana, rutasQueYaNoSalen } from '../dominio/programacion.js';
 import { resincronizarAsignaciones } from '../dominio/contrato.js';
 
 export default async function importacion(app) {
@@ -27,13 +27,18 @@ export default async function importacion(app) {
     // Deja listos los 4 marcajes de cada asignación programada de la semana.
     const programados = await programarSemana(reporte.semanaInicio, reporte.semanaFin) + resync.programados;
 
+    // Lo que este archivo trajo para hoy pero ya llegó tarde: se dice en la
+    // misma pantalla de la carga, que es donde alguien todavía puede hablarle
+    // al conductor.
+    const yaNoSalen = await rutasQueYaNoSalen();
+
     await auditar({
       usuarioId: req.user.id, accion: 'carga_excel', entidad: 'carga', entidadId: reporte.cargaId,
       detalle: { archivo: archivo.filename, leidas: reporte.leidas, pendientes: reporte.pendientes },
       ip: req.ip,
     });
 
-    return { ...reporte, marcajesProgramados: programados };
+    return { ...reporte, marcajesProgramados: programados, yaNoSalen };
   });
 
   app.get('/', async () =>
