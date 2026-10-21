@@ -433,7 +433,7 @@ onUnmounted(() => clearInterval(temporizador));
       </tr>
     </thead>
     <tbody>
-      <tr v-for="a in visibles" :key="a.id" :class="{ 'tiene-rojo': colores(a).includes('rojo') }">
+      <tr v-for="(a, i) in visibles" :key="a.id" :class="{ 'tiene-rojo': colores(a).includes('rojo') }">
         <td>{{ String(a.hora_monitoreo).slice(0, 5) }}</td>
         <td>{{ a.ruta }}</td>
         <td class="tenue-txt">{{ a.turno.replace('_', ' ') }}</td>
@@ -446,7 +446,12 @@ onUnmounted(() => clearInterval(temporizador));
           <!-- tabindex: en una tabla no hay dónde hacer clic, así que sin esto
                el estatus sólo se puede leer con ratón. Con foco se abre igual
                tabulando. -->
-          <span class="estatus" :class="a.est.clase" tabindex="0">
+          <!-- En las últimas filas el globo se abre hacia arriba: hacia abajo se
+               salía del borde de la pantalla y no se alcanzaba a leer. -->
+          <span
+            class="estatus" :class="[a.est.clase, { arriba: visibles.length > 4 && i >= visibles.length - 4 }]"
+            tabindex="0"
+          >
             {{ a.est.texto }}
             <span class="pista">
               <strong>{{ a.est.resumen }}</strong>

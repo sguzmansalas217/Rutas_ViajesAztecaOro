@@ -465,6 +465,12 @@ th.col-abrir, td.col-abrir { width: 1%; text-align: center; }
   color: #fff; font-weight: 500;
 }
 .pista .reng { display: block; font-variant-numeric: tabular-nums; }
+/* Últimas filas de la tabla: hacia abajo ya no hay pantalla. */
+.estatus.arriba .pista { top: auto; bottom: calc(100% + 9px); }
+.estatus.arriba .pista::after {
+  bottom: auto; top: 100%;
+  border-bottom-color: transparent; border-top-color: var(--marca-honda);
+}
 .pista::after {
   content: ''; position: absolute; bottom: 100%; left: 18px;
   border: 6px solid transparent; border-bottom-color: var(--marca-honda);
