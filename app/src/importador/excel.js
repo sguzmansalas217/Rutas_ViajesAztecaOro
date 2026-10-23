@@ -851,6 +851,14 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
     //  vieja (terminada) se queda como estaba —el retiro de abajo la oculta
     //  del Tablero de todos modos, por estar completa—.
     //
+    //  También cubre la MISMA hora con la celda escrita distinto (otra
+    //  unidad, "ALFREDO1 40" → "ALFREDO1 41"): la llave de asignación incluye
+    //  el texto de la celda, así que entra como fila nueva igual que con un
+    //  cambio de hora. Antes sólo se miraba ruta_id distinto, y el 2026-10-22
+    //  una ruta terminada a las 05:43 quedó oculta detrás de una fila vacía
+    //  que el Tablero pintó «No se envió»; en una ruta en curso, el conductor
+    //  habría recibido los mensajes dos veces.
+    //
     //  No hay forma de distinguir "corregir una hora a medio viaje" de "el
     //  mismo conductor hace dos viajes genuinos con el mismo nombre de ruta
     //  el mismo día" —se ven igual en la base—. Se resuelve a favor del caso
@@ -872,7 +880,6 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
             AND protegida.conductor_id = dup.conductor_id
             AND protegida.fecha = dup.fecha
             AND r_prot.nombre = r_dup.nombre AND r_prot.turno = r_dup.turno
-            AND r_prot.id <> r_dup.id
             AND EXISTS (SELECT 1 FROM marcaje m WHERE m.asignacion_id = protegida.id AND m.enviado_en IS NOT NULL)
             AND EXISTS (SELECT 1 FROM marcaje m WHERE m.asignacion_id = protegida.id AND m.estado NOT IN ('respondido', 'cancelado'))`,
         [cargaId, [...vigentes]],
@@ -892,11 +899,12 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
             AND dup.fecha >= CURRENT_DATE
             AND dup.estado <> 'reemplazada'
             AND protegida.id <> dup.id
-            AND protegida.estado <> 'reemplazada'
+            -- La protegida cuenta aunque ya esté oculta: el retiro de abajo la
+            -- marca 'reemplazada' en la primera carga, y sin esto la siguiente
+            -- carga del mismo archivo revivía la fila vacía.
             AND protegida.conductor_id = dup.conductor_id
             AND protegida.fecha = dup.fecha
             AND r_prot.nombre = r_dup.nombre AND r_prot.turno = r_dup.turno
-            AND r_prot.id <> r_dup.id
             AND EXISTS (SELECT 1 FROM marcaje m WHERE m.asignacion_id = protegida.id AND m.enviado_en IS NOT NULL)
             AND NOT EXISTS (SELECT 1 FROM marcaje m WHERE m.asignacion_id = protegida.id AND m.estado NOT IN ('respondido', 'cancelado'))
             AND (dup.fecha + r_dup.hora_monitoreo)::timestamp AT TIME ZONE 'America/Mexico_City' <= now()`,
