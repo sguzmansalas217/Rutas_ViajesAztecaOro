@@ -33,8 +33,13 @@ import { leerDirectorio, esHojaTelefonos, llave, nombreClave } from './telefonos
 // una sola columna (F..L, siete columnas fijas); desde el formato acordado en
 // la junta del 25-sep-2026 cada día trae DOS columnas —nombre y unidad
 // separados—, así que el ancho del bloque ya no es fijo y se detecta por
-// contenido (ver detectarDias). PRIMERA_COL_DIA es lo único que sigue fijo.
+// contenido (ver detectarDias). PRIMERA_COL_DIA es desde dónde se empieza a
+// buscar, no dónde tiene que estar: el 2026-10-22 el cliente metió una
+// columna FILTRO (SI/NO) antes de LUNES, los días se corrieron a la G, y con
+// la F fija el archivo se leía con 0 filas sin dar ningún error. Se toleran
+// hasta COLS_EXTRA columnas nuevas antes del primer día.
 const PRIMERA_COL_DIA = 6;
+const COLS_EXTRA = 4;
 
 /**
  * Configuración por hoja. `pm: true` significa que las horas menores a las 12
@@ -120,8 +125,8 @@ function comoFecha(v) {
 const fechaISO = (v) => `${v.getUTCFullYear()}-${String(v.getUTCMonth() + 1).padStart(2, '0')}-${String(v.getUTCDate()).padStart(2, '0')}`;
 
 /**
- * Arma el bloque de días de una fila, columna por columna desde
- * PRIMERA_COL_DIA, y se detiene en la primera que no sea fecha —ahí empieza
+ * Arma el bloque de días de una fila, columna por columna desde la primera
+ * fecha a partir de PRIMERA_COL_DIA, y se detiene en la primera que no sea fecha —ahí empieza
  * ENCARGADO, tenga rótulo o no—.
  *
  * Cada día puede venir en UNA columna (formato viejo: 'NOMBRE UNIDAD' junto)
@@ -137,6 +142,7 @@ function detectarDias(hoja, filaFechas) {
   const fila = hoja.getRow(filaFechas);
   const dias = [];
   let c = PRIMERA_COL_DIA;
+  while (c < PRIMERA_COL_DIA + COLS_EXTRA && !comoFecha(fila.getCell(c).value)) c++;
   while (c <= hoja.columnCount) {
     const v = comoFecha(fila.getCell(c).value);
     if (!v) break;

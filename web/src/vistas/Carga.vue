@@ -63,6 +63,14 @@ onMounted(cargarHistorial);
   </div>
 
   <div v-if="reporte">
+    <!-- 0 celdas leídas casi siempre es que el cliente cambió el formato del
+         archivo. Antes salía en verde como cualquier carga y se subió tres
+         veces seguidas (2026-10-22) sin que nadie viera que no entró nada. -->
+    <div v-if="!reporte.leidas" class="error">
+      <strong>No se leyó ninguna ruta de este archivo, así que no se aplicó ningún cambio.</strong>
+      Casi siempre es que cambió el formato del Excel (una columna o fila nueva).
+      Avísale al proveedor del sistema antes de volver a subirlo.
+    </div>
     <div class="ok">
       Semana {{ reporte.semanaInicio }} → {{ reporte.semanaFin }}.
       {{ reporte.leidas }} celdas leídas, {{ reporte.resueltas }} listas,
