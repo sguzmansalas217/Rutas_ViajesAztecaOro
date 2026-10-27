@@ -53,7 +53,7 @@ export default async function operacion(app) {
     const fecha = req.query.fecha ?? hoyLocal();
     return filas(
       `SELECT a.id, a.estado, a.texto_origen, a.hoja, a.celda,
-              r.nombre AS ruta, r.turno, r.hora_monitoreo, r.encargado,
+              r.nombre AS ruta, r.turno, r.hora_monitoreo, r.encargado, r.lleva_filtro,
               v.clave  AS unidad,
               c.nombre AS conductor, c.telefono_e164,
               -- 'enviado' es lo que separa "no ha contestado" de "todavía no se

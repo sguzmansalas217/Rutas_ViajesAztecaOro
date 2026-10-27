@@ -27,6 +27,11 @@ const MARCAJES = [
 ];
 const DEF = Object.fromEntries(MARCAJES.map((d) => [d.n, d]));
 
+// Ruta sin filtro (columna FILTRO = NO del Excel): el marcaje 3 pregunta si ya
+// salió de su domicilio, con botones «Confirmo salida» / «Voy con retraso».
+const DOMICILIO = { n: 3, icono: '🏠', nombre: 'Salida de domicilio', que: 'confirmar que ya salió de su domicilio' };
+const defDe = (a, n) => (n === 3 && a.lleva_filtro === false ? DOMICILIO : DEF[n]);
+
 // Un filtro por cada marcaje: el índice es el número de marcaje menos uno.
 // Van separados a propósito. "Quién no contestó el despertador" y "quién no
 // avisó que salió" son dos preguntas distintas y se atienden distinto.
@@ -80,6 +85,10 @@ function colores(a) {
 // El verde del filtro también merece decir dónde estaba: es la única prueba
 // que da el servicio, y verla escrita es lo que se le enseña al cliente.
 function comoQuedo(m) {
+  if (m.sinFiltro) {
+    if (m.semaforo === 'rojo') return 'avisó que va con retraso';
+    return m.semaforo === 'verde' ? 'a tiempo' : 'tarde';
+  }
   if (m.semaforo === 'rojo') {
     return m.numero === 3 && m.dentro === false
       ? `fuera del filtro, a ${distancia(m.metros)}`
@@ -142,7 +151,7 @@ function detalle(m) {
 }
 
 function titulo(a, n) {
-  const d = DEF[n];
+  const d = defDe(a, n);
   const m = marcaje(a, n);
   if (!m) return `${d.icono} ${d.nombre}: no programado`;
   const pie = registrable(m) ? '\nClic para confirmar que le hablaste.' : '';
@@ -203,7 +212,7 @@ async function confirmarManual(id) {
  *   sigue → el día de esa ruta aún no empieza o va entre marcaje y marcaje
  */
 function estatus(a) {
-  const lista = MARCAJES.map((d) => ({ d, m: marcaje(a, d.n) })).filter((x) => x.m);
+  const lista = MARCAJES.map((d) => ({ d: defDe(a, d.n), m: marcaje(a, d.n) })).filter((x) => x.m);
   if (!lista.length) {
     return {
       clase: 'gris',
@@ -230,15 +239,32 @@ function estatus(a) {
   // Y por lo mismo se separan éstos: «no mandó la ubicación» no es un retraso,
   // y contarlo como tal manda al monitorista a reclamarle una hora al conductor
   // que sí contestó a tiempo.
-  const sinPunto = amarillos.filter((x) => (x.m.numero === 3 || x.m.numero === 4) && !x.m.ubicacion);
+  const sinPunto = amarillos.filter((x) => ((x.m.numero === 3 && !x.m.sinFiltro) || x.m.numero === 4) && !x.m.ubicacion);
   const tarde = amarillos.filter((x) => !sinPunto.includes(x));
 
   if (rojos.length) {
-    const { d } = rojos[rojos.length - 1];
+    // Lo que no contestó manda sobre lo que contestó mal: a ése hay que buscarlo.
+    const sinResp = rojos.filter((x) => !x.m.respondido);
+    const { d, m } = (sinResp.length ? sinResp : rojos).at(-1);
+    // Rojo con respuesta: el conductor sí contestó, pero lo que dijo es un
+    // problema. «No contestó» ahí mandaba al monitorista a buscar a alguien
+    // que ya había avisado.
+    if (m.respondido) {
+      const que = m.sinFiltro ? 'Avisó que va con retraso al salir de su domicilio.'
+        : m.numero === 2 ? 'Reportó una falla en la unidad.'
+        : m.numero === 3 ? 'Mandó la ubicación fuera del filtro.'
+        : 'Su respuesta quedó en rojo.';
+      return {
+        clase: 'rojo',
+        texto: m.sinFiltro ? 'Va con retraso' : m.numero === 2 ? 'Falla reportada' : `Alerta · ${d.nombre}`,
+        resumen: `${que} Ya se le avisó al encargado; hay que darle seguimiento.`,
+        lineas,
+      };
+    }
     return {
       clase: 'rojo',
       texto: `No contestó · ${d.nombre}`,
-      resumen: `Se le preguntó y no respondió: falta ${d.que}. ${rojos.length > 1 ? `Van ${rojos.length} marcajes sin contestar. ` : ''}Hay que localizar al conductor.`,
+      resumen: `Se le preguntó y no respondió: falta ${d.que}. ${sinResp.length > 1 ? `Van ${sinResp.length} marcajes sin contestar. ` : ''}Hay que localizar al conductor.`,
       lineas,
     };
   }
@@ -374,7 +400,14 @@ async function cargar() {
   try {
     error.value = '';
     resumen.value = await api.get(`/operacion/tablero?fecha=${fecha.value}`);
-    asignaciones.value = await api.get(`/operacion/asignaciones?fecha=${fecha.value}&turno=${turno.value}`);
+    const lista = await api.get(`/operacion/asignaciones?fecha=${fecha.value}&turno=${turno.value}`);
+    // El marcaje 3 de una ruta sin filtro se lee distinto (ver comoQuedo):
+    // se marca aquí para no tener que pasar la asignación a cada función.
+    for (const a of lista) {
+      if (a.lleva_filtro !== false) continue;
+      for (const m of a.marcajes ?? []) if (m.numero === 3) m.sinFiltro = true;
+    }
+    asignaciones.value = lista;
   } catch (e) {
     error.value = e.message;
   }

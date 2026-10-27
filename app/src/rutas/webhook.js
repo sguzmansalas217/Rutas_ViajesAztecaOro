@@ -48,6 +48,13 @@ const AVISA_QUE_LLEGO = /alcoholim|alcohol[íi]m|filtro|ya lleg|ya estoy (en|aqu
 const SALIO_A_RUTA = /inicio (de )?ruta|parada|ya (me )?sal[íi]|ya voy en ruta|ya estoy en ruta|arranqu[eé]|ya sali[oó]/i;
 
 /**
+ * En rutas sin filtro, el marcaje 3 pregunta si ya salió de su domicilio y
+ * trae un botón «Voy con retraso». Esto es lo mismo, escrito. «tarde» a secas
+ * no: «buenas tardes» lo diría quien sí va a tiempo.
+ */
+const VA_CON_RETRASO = /retras|voy tarde|llego tarde|se me hizo tarde|voy atrasad/i;
+
+/**
  * Formas equivalentes de un mismo celular mexicano.
  *
  * Meta entrega el remitente como 521 + 10 dígitos (el '1' de móvil), pero el
@@ -284,8 +291,12 @@ async function procesarMensaje(mensaje, valor) {
       `SELECT m.id, m.numero, m.programado_para, m.enviado_en, m.alertado_en
          FROM marcaje m
          JOIN asignacion a ON a.id = m.asignacion_id
+        JOIN ruta r ON r.id = a.ruta_id
         WHERE a.conductor_id = $1
           AND m.numero IN (3, 4)
+          -- En una ruta sin filtro el 3 es la salida del domicilio: no lleva
+          -- ubicación, así que un punto no lo contesta.
+          AND (m.numero = 4 OR r.lleva_filtro)
           AND m.respondido_en IS NULL
           -- El filtro también acepta la ubicación mandada por su cuenta antes
           -- de la pregunta, con la misma ventana que «ya llegué» (ver
@@ -429,11 +440,16 @@ async function procesarMensaje(mensaje, valor) {
     return;
   }
 
+  // Ruta sin filtro (columna FILTRO = NO): el 3 es la salida del domicilio.
+  // Se contesta con botón, sin ubicación, y no se compara contra geocercas.
+  const sinFiltro = marcaje.numero === 3 && !(await llevaFiltro(marcaje.id));
+  const esRetraso = sinFiltro && (botonId?.startsWith('m3-retraso-') || (!botonId && VA_CON_RETRASO.test(texto ?? '')));
+
   // Sólo el filtro se compara contra las geocercas. En la salida el punto es
   // informativo, y evaluarlo igual dejaría guardado un «a 14 km de OFICINA
   // DANY» que el tablero enseñaría como si algo estuviera mal: la ruta arranca
   // donde arranca, no hay filtro contra el cual estar lejos.
-  const evaluacion = latitud != null && marcaje.numero === 3
+  const evaluacion = latitud != null && marcaje.numero === 3 && !sinFiltro
     ? await evaluarUbicacion(latitud, longitud)
     : null;
 
@@ -448,7 +464,7 @@ async function procesarMensaje(mensaje, valor) {
   // contesta con texto queda registrado —no se le va a dejar el marcaje abierto
   // por un celular que no comparte ubicación—, pero en amarillo, que es la
   // verdad: hubo respuesta y no hubo comprobación.
-  if (marcaje.numero === 3 && latitud == null) semaforo = 'amarillo';
+  if (marcaje.numero === 3 && !sinFiltro && latitud == null) semaforo = 'amarillo';
 
   // La salida, igual, aunque por otro motivo.
   //
@@ -477,6 +493,11 @@ async function procesarMensaje(mensaje, valor) {
   // venza para que alguien se entere.
   const esFalla = botonId?.startsWith('m2-no-');
   if (esFalla) semaforo = 'rojo';
+
+  // «Voy con retraso» en una ruta sin filtro: igual que la falla, es una
+  // respuesta que no es un sí. Rojo y aviso inmediato (pedido del cliente,
+  // 2026-10-27): la ruta va a salir tarde y el encargado tiene que saberlo ya.
+  if (esRetraso) semaforo = 'rojo';
 
   // El filtro contestado desde fuera de la geocerca es el otro motivo de
   // rojo con respuesta (ver geocerca.js semaforoDe): tampoco vence nunca
@@ -525,7 +546,7 @@ async function procesarMensaje(mensaje, valor) {
   // avisa aquí mismo, ya, sin esperar. Con la ventana cerrada se reusa la
   // plantilla de "sin respuesta" (decisión del cliente): el motivo real va en
   // la variable del detalle.
-  if (esFalla || fueraDeFiltro) {
+  if (esFalla || esRetraso || fueraDeFiltro) {
     const r = await unaFila(
       `SELECT ru.nombre FROM marcaje m
          JOIN asignacion a ON a.id = m.asignacion_id
@@ -536,7 +557,9 @@ async function procesarMensaje(mensaje, valor) {
     const tel = conductor.telefono_e164 ? ` · 📞 ${telefonoLegible(conductor.telefono_e164)}` : '';
     const motivo = esFalla
       ? '🔧 Falla reportada'
-      : `📍 Filtro fuera de ubicación (${Math.round(evaluacion.distanciaM)} m de ${evaluacion.nombre})`;
+      : esRetraso
+        ? '🕒 Va con retraso (salida de domicilio)'
+        : `📍 Filtro fuera de ubicación (${Math.round(evaluacion.distanciaM)} m de ${evaluacion.nombre})`;
     const detalle = `${motivo} — ${conductor.nombre ?? '?'} · ${r?.nombre ?? '?'}${tel}`;
     await avisarEncargados(detalle, {
       claveplantilla: 'wa.plantilla_alerta',
@@ -552,7 +575,7 @@ async function procesarMensaje(mensaje, valor) {
   // se manda además el genérico: serían dos mensajes para lo mismo.
   if (marcaje.numero === 4 && latitud == null && await pedirUbicacionDeSalida(conductor, marcaje)) return;
 
-  await acusarRecibo({ conductor, marcaje, semaforo, evaluacion, tieneUbicacion: latitud != null, esFalla });
+  await acusarRecibo({ conductor, marcaje, semaforo, evaluacion, tieneUbicacion: latitud != null, esFalla, esRetraso, sinFiltro });
 }
 
 /**
@@ -634,6 +657,18 @@ async function pedirUbicacionDeSalida(conductor, marcaje) {
   }
 }
 
+/** Si la ruta de este marcaje pasa por filtro (columna FILTRO del Excel). */
+async function llevaFiltro(marcajeId) {
+  const r = await unaFila(
+    `SELECT r.lleva_filtro FROM marcaje m
+       JOIN asignacion a ON a.id = m.asignacion_id
+       JOIN ruta r ON r.id = a.ruta_id
+      WHERE m.id = $1`,
+    [marcajeId],
+  );
+  return r?.lleva_filtro !== false;
+}
+
 /** Un mensaje corto de vuelta, siempre gratis o nada. */
 async function acusar(conductor, clave, porOmision, marcajeId, datos = {}) {
   try {
@@ -689,6 +724,7 @@ async function pedirleLaUbicacion(conductor, { marcajeId = null } = {}) {
           WHERE m.id = $1
             AND a.conductor_id = $2
             AND m.numero = 3
+            AND r.lleva_filtro
             AND m.respondido_en IS NULL
             -- Un toque es deliberado, así que aquí basta un minuto: sólo
             -- protege del doble clic, no del conductor que insiste.
@@ -708,6 +744,7 @@ async function pedirleLaUbicacion(conductor, { marcajeId = null } = {}) {
            JOIN ruta r ON r.id = a.ruta_id
           WHERE a.conductor_id = $1
             AND m.numero = 3
+            AND r.lleva_filtro
             AND m.respondido_en IS NULL
             -- El filtro lo dispara el conductor (pedido del cliente,
             -- 2026-10-09): puede avisar que llegó aunque el marcaje 3 todavía
@@ -794,12 +831,18 @@ async function pedirleLaUbicacion(conductor, { marcajeId = null } = {}) {
  * mandar —si algún día abrirVentana fallara, un acuse por plantilla sería pagar
  * por decir "gracias"—.
  */
-async function acusarRecibo({ conductor, marcaje, semaforo, evaluacion, tieneUbicacion, esFalla = false }) {
+async function acusarRecibo({ conductor, marcaje, semaforo, evaluacion, tieneUbicacion, esFalla = false, esRetraso = false, sinFiltro = false }) {
   // Un "✅ Registrado" a quien acaba de reportar la unidad averiada lo deja sin
   // saber qué hacer: se le dice a quién acudir.
   if (esFalla) {
     await acusar(conductor, 'acuse.falla',
       '🔧 Falla registrada, {nombre}. Ponte en contacto con el coordinador para tener indicaciones.', marcaje.id);
+    return;
+  }
+
+  if (esRetraso) {
+    await acusar(conductor, 'acuse.retraso',
+      '🕒 Anotado, {nombre}. Le avisamos a tu encargado que vas con retraso.', marcaje.id);
     return;
   }
 
@@ -809,7 +852,7 @@ async function acusarRecibo({ conductor, marcaje, semaforo, evaluacion, tieneUbi
   //
   // 'acuse.ubicacion' quedó para el caso en que no hay geocercas activas:
   // ahí no se puede afirmar ni que está ni que no está.
-  const clave = marcaje.numero !== 3 ? (semaforo === 'amarillo' ? 'acuse.tarde' : 'acuse.generico')
+  const clave = marcaje.numero !== 3 || sinFiltro ? (semaforo === 'amarillo' ? 'acuse.tarde' : 'acuse.generico')
     : !tieneUbicacion ? 'acuse.sin_ubicacion'
     : evaluacion?.dentro === true ? 'acuse.dentro'
     : evaluacion?.dentro === false ? 'acuse.fuera'

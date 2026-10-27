@@ -199,9 +199,20 @@ function localizarEncabezado(hoja) {
   // rótulo o no: ENTRADA TA/TB no lo escriben, pero el dato sí está ahí—.
   const colEncargado = dias.length ? dias[dias.length - 1].colUnidad + 1 : null;
 
+  // FILTRO (SI/NO), desde 2026-10-22: si la ruta pasa por filtro. Se busca por
+  // su rótulo entre las columnas fijas y el primer día —no tiene lugar fijo y
+  // los archivos viejos no la traen—.
+  let colFiltro = null;
+  if (filaEtiquetas && dias.length) {
+    const fila = hoja.getRow(filaEtiquetas);
+    for (let c = 2; c < dias[0].colNombre; c++) {
+      if (normalizar(textoDe(fila.getCell(c))) === 'FILTRO') { colFiltro = c; break; }
+    }
+  }
+
   // Los datos empiezan después de la última de las dos, sean cuales sean.
   const ultima = Math.max(filaFechas, filaEtiquetas);
-  return { fechas, dias, colEncargado, filaFechas, filaEtiquetas, primeraFilaDatos: ultima + 1 };
+  return { fechas, dias, colEncargado, colFiltro, filaFechas, filaEtiquetas, primeraFilaDatos: ultima + 1 };
 }
 
 /**
@@ -443,20 +454,32 @@ async function resolverConductor(cliente, textoCelda, nombre, unidad, crear, mem
   return r;
 }
 
-async function resolverRuta(cliente, { nombre, turno, hora, salida, parada, seccion, encargado }, memo) {
+/**
+ * SI/NO de la columna FILTRO. Cualquier otra cosa —vacío, sin columna— es null:
+ * la ruta se queda como estaba (por omisión sí lleva filtro).
+ */
+function llevaFiltroDe(celda) {
+  const v = normalizar(textoDe(celda));
+  if (v === 'NO') return false;
+  if (v === 'SI') return true;
+  return null;
+}
+
+async function resolverRuta(cliente, { nombre, turno, hora, salida, parada, seccion, encargado, llevaFiltro = null }, memo) {
   const llave = `${turno}|${nombre}|${hora}`;
   if (memo.rutas.has(llave)) return memo.rutas.get(llave);
 
   const { rows } = await cliente.query(
-    `INSERT INTO ruta (nombre, turno, hora_monitoreo, hora_salida, parada_inicial, seccion, encargado)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO ruta (nombre, turno, hora_monitoreo, hora_salida, parada_inicial, seccion, encargado, lleva_filtro)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::boolean, true))
      ON CONFLICT (nombre, turno, hora_monitoreo) DO UPDATE
        SET hora_salida    = COALESCE(EXCLUDED.hora_salida, ruta.hora_salida),
            parada_inicial = COALESCE(EXCLUDED.parada_inicial, ruta.parada_inicial),
            seccion        = COALESCE(EXCLUDED.seccion, ruta.seccion),
-           encargado      = COALESCE(EXCLUDED.encargado, ruta.encargado)
+           encargado      = COALESCE(EXCLUDED.encargado, ruta.encargado),
+           lleva_filtro   = COALESCE($8::boolean, ruta.lleva_filtro)
      RETURNING id`,
-    [nombre, turno, hora, salida, parada, seccion, encargado],
+    [nombre, turno, hora, salida, parada, seccion, encargado, llevaFiltro],
   );
   memo.rutas.set(llave, rows[0].id);
   return rows[0].id;
@@ -576,7 +599,7 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
         continue;
       }
 
-      const { fechas, dias, colEncargado, primeraFilaDatos } = localizarEncabezado(hoja);
+      const { fechas, dias, colEncargado, colFiltro, primeraFilaDatos } = localizarEncabezado(hoja);
       if (Object.keys(fechas).length === 0) {
         reporte.ignoradas.push(`${hoja.name} (no se encontró la fila de fechas)`);
         continue;
@@ -609,6 +632,7 @@ export async function importarExcel(buffer, nombreArchivo, usuarioId = null) {
           parada: cfg.cols.parada ? textoDe(fila.getCell(cfg.cols.parada)).trim() || null : null,
           seccion,
           encargado: colEncargado ? normalizar(textoDe(fila.getCell(colEncargado))) || null : null,
+          llevaFiltro: colFiltro ? llevaFiltroDe(fila.getCell(colFiltro)) : null,
         }, memo);
 
         for (const dia of dias) {

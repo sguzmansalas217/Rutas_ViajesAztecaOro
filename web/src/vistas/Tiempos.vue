@@ -182,7 +182,9 @@ onMounted(cargar);
       <p class="tenue-txt">
         El del alcoholímetro. Primero le pregunta si ya llegó, con el botón
         <em>Ya llegué</em>; al tocarlo se le pide la ubicación, que es lo único
-        que cuenta.
+        que cuenta. En las rutas con <strong>FILTRO = NO</strong> en el Excel, en su
+        lugar se le pregunta si ya salió de su domicilio: <em>Confirmo salida</em>
+        o <em>Voy con retraso</em> (rojo y alerta al encargado).
       </p>
 
       <label for="d4">4 · Salida — minutos <strong>después del filtro</strong></label>

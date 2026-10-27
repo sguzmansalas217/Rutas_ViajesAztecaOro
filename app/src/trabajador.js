@@ -57,7 +57,7 @@ async function tic() {
         AND m.programado_para <= now()
         AND m.programado_para >  now() - interval '15 minutes'
       RETURNING m.id, m.numero, c.id AS conductor_id, c.nombre, c.telefono_e164,
-                r.nombre AS ruta, r.hora_monitoreo, v.clave AS unidad, a.texto_origen`,
+                r.nombre AS ruta, r.hora_monitoreo, r.lleva_filtro, v.clave AS unidad, a.texto_origen`,
   );
 
   for (const p of pendientes) {
@@ -93,7 +93,7 @@ async function vencerYAlertar() {
         AND m.respondido_en IS NULL
         AND m.alertado_en IS NULL
         AND m.enviado_en < now() - ($1 || ' minutes')::interval
-      RETURNING m.numero, r.nombre AS ruta, r.encargado,
+      RETURNING m.numero, r.nombre AS ruta, r.encargado, r.lleva_filtro,
                 (SELECT c.nombre FROM conductor c WHERE c.id = a.conductor_id) AS conductor,
                 (SELECT c.telefono_e164 FROM conductor c WHERE c.id = a.conductor_id) AS telefono`,
     [String(espera)],
@@ -111,7 +111,7 @@ async function vencerYAlertar() {
   // nueva con componente de llamada aprobado en Meta—.
   const items = vencidos
     .slice(0, 15)
-    .map((v) => `${v.conductor ?? '?'} — ${v.ruta} (${NOMBRE_MARCAJE[v.numero] ?? `marcaje ${v.numero}`})${v.telefono ? ` · 📞 ${telefonoLegible(v.telefono)}` : ''}`);
+    .map((v) => `${v.conductor ?? '?'} — ${v.ruta} (${v.numero === 3 && v.lleva_filtro === false ? 'salida de domicilio' : NOMBRE_MARCAJE[v.numero] ?? `marcaje ${v.numero}`})${v.telefono ? ` · 📞 ${telefonoLegible(v.telefono)}` : ''}`);
   const extra = vencidos.length > 15 ? ` …y ${vencidos.length - 15} más` : '';
   const texto = `🔴 Sin respuesta (${vencidos.length}):\n${items.map((i) => `• ${i}`).join('\n')}${extra}`;
 
@@ -157,6 +157,24 @@ const trabajadorEnvios = new Worker(
         'ventana cerrada: marcaje 2/3/4 no se manda, queda para el aviso de rojo',
       );
       return;
+    }
+
+    // Ruta sin filtro (columna FILTRO = NO del Excel): en el lugar del filtro
+    // se le pregunta si ya salió de su domicilio. Sin ubicación: no hay nada
+    // contra qué compararla. Dos botones, y «Voy con retraso» es una respuesta
+    // que pone el marcaje en rojo y avisa al encargado (webhook.js).
+    if (m.numero === 3 && m.lleva_filtro === false) {
+      return enviarAConductor({
+        conductorId: m.conductor_id,
+        telefono: m.telefono_e164,
+        texto: texto(await parametro('texto.marcaje3_domicilio', '🏠 {nombre}, confirma que ya saliste de tu domicilio.'), datos),
+        variables: [datos.nombre, datos.ruta, datos.hora],
+        marcajeId: m.id,
+        botones: [
+          { id: `m3-sali-${m.id}`, titulo: String(await parametro('boton.marcaje3_sali', 'Confirmo salida')) },
+          { id: `m3-retraso-${m.id}`, titulo: String(await parametro('boton.marcaje3_retraso', 'Voy con retraso')) },
+        ],
+      });
     }
 
     // El filtro ya no pide la ubicación de golpe: primero pregunta si llegó.
